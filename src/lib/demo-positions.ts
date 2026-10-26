@@ -173,7 +173,7 @@ export function checkAndSettleProfitsAndMaturity(): { settledProfits: number; ma
         
         if (isTrial) {
           // Trial Trade Matures:
-          // The $20 trial fund is deducted/reclaimed as instructed ("৩ দিন পর ২০$ কেটে যাবে")
+          // The $20 trial fund is deducted/reclaimed automatically after 3 days.
           // All profits accrued remain with the user in available balance!
           if (p.trialMarginAllocated && p.trialMarginAllocated > 0) {
             releaseTrialMargin(p.trialMarginAllocated);
@@ -246,8 +246,8 @@ if (typeof window !== "undefined") {
 
 /**
  * Open a trade position.
- * Supports both manual trading ("হাত দিয়ে") and automated AI trading ("ai trade").
- * If user available balance is 0, margin is allocated from the $20 trial fund!
+ * Manual trading strictly requires real deposited cash balance.
+ * Automated AI trading can utilize the $20 trial fund for the 3-day auto cycle.
  */
 export function openDemoPosition(input: {
   pair: string;
@@ -272,18 +272,35 @@ export function openDemoPosition(input: {
 
   const availableCash = state.balance;
   const trialAvailable = getTrialFundUsableMargin();
-  const totalTradingPower = Math.round((availableCash + trialAvailable) * 100) / 100;
 
-  if (input.amount > totalTradingPower) {
-    throw new Error(`Amount exceeds available trading balance (${formatMoney(totalTradingPower)}).`);
-  }
+  let cashToDeduct = 0;
+  let trialToAllocate = 0;
 
-  // Calculate allocation: cash vs trial fund
-  const cashToDeduct = Math.min(availableCash, input.amount);
-  const trialToAllocate = Math.max(0, Math.round((input.amount - cashToDeduct) * 100) / 100);
+  if (!input.isAiTrade) {
+    // Manual trading: strictly requires deposited cash. $20 trial fund is forbidden for manual trades.
+    if (input.amount > availableCash) {
+      if (trialAvailable > 0) {
+        throw new Error(
+          `The $20 trial fund is restricted strictly to 3-day Auto AI Robot Trading. Manual trading requires deposited funds (${formatMoney(availableCash)} available).`
+        );
+      }
+      throw new Error(`Amount exceeds available balance (${formatMoney(availableCash)}).`);
+    }
+    cashToDeduct = input.amount;
+    trialToAllocate = 0;
+  } else {
+    // AI Robot Auto Trading: can utilize cash balance and/or $20 trial fund
+    const totalTradingPower = Math.round((availableCash + trialAvailable) * 100) / 100;
+    if (input.amount > totalTradingPower) {
+      throw new Error(`Amount exceeds available trading balance (${formatMoney(totalTradingPower)}).`);
+    }
 
-  if (trialToAllocate > 0) {
-    allocateTrialMargin(trialToAllocate);
+    cashToDeduct = Math.min(availableCash, input.amount);
+    trialToAllocate = Math.max(0, Math.round((input.amount - cashToDeduct) * 100) / 100);
+
+    if (trialToAllocate > 0) {
+      allocateTrialMargin(trialToAllocate);
+    }
   }
 
   const dir = input.side === "Long" ? 1 : -1;
@@ -330,7 +347,7 @@ export function openDemoPosition(input: {
 }
 
 /**
- * Close a manual position ("হাত দিয়ে").
+ * Close a manual position.
  * If position was funded by trial fund:
  * - Trial fund margin is returned to trial fund.
  * - Any profit made is credited directly into user's available balance!

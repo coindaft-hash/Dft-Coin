@@ -150,7 +150,7 @@ export function releaseTrialMargin(amount: number): void {
 }
 
 /**
- * Reclaims the $20 trial fund when 3 days (72 hours) have elapsed ("৩ দিন পর ২০$ কেটে যাবে").
+ * Reclaims the $20 trial fund when 3 days (72 hours) have elapsed.
  * Any earned profits remain untouched in the user's available balance.
  */
 export function reclaimTrialFundIfExpired(): boolean {

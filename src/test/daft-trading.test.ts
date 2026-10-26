@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { simulatedDaftQuote } from "@/lib/daft-simulation";
-import { openDemoPosition, closeDemoPosition, positionStats } from "@/lib/demo-positions";
+import { openDemoPosition, closeDemoPosition, positionStats, creditTestDeposit } from "@/lib/demo-positions";
 
 const base = { symbol: "DAFT", price: 1.25, baseline_price: 1.25, baseline_at: "2026-10-11T00:00:00Z", updated_at: "2026-10-11T00:00:00Z", trend: "neutral", trend_until: null, version: 1 };
 describe("Cloud DAFT simulated trading", () => {
@@ -11,6 +11,7 @@ describe("Cloud DAFT simulated trading", () => {
     expect(simulatedDaftQuote(base, start + 10000).price).not.toBe(1.25);
   });
   it("uses DAFT leverage for both sides, closes and persists history", () => {
+    creditTestDeposit(1000);
     for (const side of ["Long", "Short"] as const) {
       const p = openDemoPosition({ pair: "DAFT/USDT", category: "Crypto", symbol: "DAFT", quote: "USDT", side, amount: 100, entryPrice: 1.25, leverage: 10 });
       expect(p.leverage).toBe(10);

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { getCryptoCandles, type LiveCandle } from "@/lib/candles.functions";
 import { useLivePrices, fmtLive } from "@/hooks/use-live-prices";
@@ -78,12 +78,19 @@ export function TradePage() {
   const tpValue = Number(tp), slValue = Number(sl);
   const tpError = tpOn && tp && (dir * (tpValue - price) <= 0) ? `Take profit must be ${side === "Long" ? "above" : "below"} entry` : "";
   const slError = slOn && sl && (dir * (price - slValue) <= 0) ? `Stop loss must be ${side === "Long" ? "below" : "above"} entry` : "";
-  const sizeError = size && !(amount > 0) ? "Enter an amount above 0" : amount > tradingPower ? `Amount exceeds trading power (${formatMoney(tradingPower)})` : "";
-  const valid = !!live && amount > 0 && amount <= tradingPower && !tpError && !slError && (!tpOn || tpValue > 0) && (!slOn || slValue > 0);
+  const hasTrialFund = trialActive && usableTrialMargin > 0;
+  const sizeError = size && !(amount > 0)
+    ? "Enter an amount above 0"
+    : amount > availableBalance
+      ? (hasTrialFund
+          ? "The $20 trial fund is restricted strictly to 3-day Auto AI Robot Trading. Deposit funds to trade manually."
+          : `Amount exceeds available balance (${formatMoney(availableBalance)})`)
+      : "";
+  const valid = !!live && amount > 0 && amount <= availableBalance && !tpError && !slError && (!tpOn || tpValue > 0) && (!slOn || slValue > 0);
   const pnl = (target: number) => (dir * (target - price) * qty);
   const reset = () => setNotice("");
 
-  const presets = tradingPower <= 25 ? ["5", "10", "15", "20"] : ["10", "25", "50", "100"];
+  const presets = availableBalance <= 25 ? ["5", "10", "15", "20"] : ["10", "25", "50", "100"];
 
   return <div className="exchange-shell trade-page">
     <header className="exchange-header"><div className="brand"><svg className="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M3 7h7l6 13 6-13h7L16 30 3 7Z" fill="currentColor"/><path d="m12 3 4 8 4-8h-8Z" fill="currentColor"/></svg><span>vertex<span className="text-primary">.</span></span></div><div className="flex items-center gap-4"><Bell className="size-5 text-muted-foreground" strokeWidth={1.7} aria-label="Notifications"/><div className="account-avatar" aria-label="Account">JD</div></div></header>
@@ -91,12 +98,29 @@ export function TradePage() {
       <div className="welcome">
         <div className="min-w-0"><h1>Trade</h1><p>Manual trading with live quotes</p></div>
         <div className="flex flex-col items-end gap-1">
-          <span className="demo-label shrink-0"><span className="status-dot"/>Trading Power: {formatMoney(tradingPower)}</span>
-          {trialActive && usableTrialMargin > 0 && (
-            <span className="text-[10px] text-emerald-400 font-medium">Includes ${usableTrialMargin.toFixed(0)} Trial Fund</span>
+          <span className="demo-label shrink-0"><span className="status-dot"/>Available: {formatMoney(availableBalance)}</span>
+          {hasTrialFund && (
+            <span className="text-[10px] text-emerald-400 font-medium">+$20 Trial Fund (AI Auto Trade Only)</span>
           )}
         </div>
       </div>
+
+      {hasTrialFund && availableBalance <= 0 && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gradient-to-r from-emerald-950/60 to-[#0e1f2d] border border-emerald-500/30 p-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="size-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+            <span className="text-slate-200">
+              Your <strong>$20 Free Trial Fund</strong> is reserved exclusively for <strong>3-Day Auto AI Robot Trading</strong>.
+            </span>
+          </div>
+          <Link
+            to="/ai-trade"
+            className="shrink-0 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3 py-1.5 transition-colors"
+          >
+            Launch AI Robot Trade →
+          </Link>
+        </div>
+      )}
       <section className="trade-card">
         <div className="trade-symbol-row">
           <select className="trade-select" aria-label="Market symbol" value={pair} onChange={e => { setPair(e.target.value); setTp(""); setSl(""); reset(); }}>
@@ -134,22 +158,31 @@ export function TradePage() {
           {asset?.symbol === "DAFT" && <div><dt>Leverage</dt><dd>{leverage}x</dd></div>}
           <div><dt>Available balance</dt><dd>{formatMoney(availableBalance)}</dd></div>
           {trialActive && usableTrialMargin > 0 && (
-            <div><dt>Trial fund available</dt><dd className="text-emerald-400 font-mono">+{formatMoney(usableTrialMargin)}</dd></div>
+            <div><dt>Trial fund</dt><dd className="text-emerald-400 font-mono text-xs">+{formatMoney(usableTrialMargin)} (AI Robot Trade Only)</dd></div>
           )}
-          <div><dt>Trading power</dt><dd className="font-bold text-foreground font-mono">{formatMoney(tradingPower)}</dd></div>
+          <div><dt>Manual trading limit</dt><dd className="font-bold text-foreground font-mono">{formatMoney(availableBalance)}</dd></div>
           <div><dt>Size</dt><dd>{amount > 0 ? `${amount.toLocaleString()} ${asset?.quote}` : "—"}</dd></div>
           <div><dt>Est. quantity</dt><dd>{qty ? `${formatPrice(qty)} ${asset?.symbol}` : "—"}</dd></div>
           <div><dt>Take profit</dt><dd>{tpOn && tpValue > 0 && !tpError ? `${tp} (${pnl(tpValue) >= 0 ? "+" : ""}${pnl(tpValue).toFixed(2)})` : "Off"}</dd></div>
           <div><dt>Stop loss</dt><dd>{slOn && slValue > 0 && !slError ? `${sl} (${pnl(slValue).toFixed(2)})` : "Off"}</dd></div>
         </dl>
         <Button className={`w-full trade-submit ${side === "Short" ? "trade-submit-short" : ""}`} disabled={!valid} onClick={() => {
-          if (!asset || !valid) return;
+          if (!asset || !valid) {
+            if (hasTrialFund && amount > availableBalance) {
+              setNotice("The $20 trial fund is restricted strictly to 3-day Auto AI Robot Trading. Deposit funds to trade manually.");
+            }
+            return;
+          }
           const current = get(asset);
           if (!current) { setNotice("Current price unavailable. Please retry."); return; }
           const entryPrice = side === "Long" ? current.ask > 0 ? current.ask : current.last : current.bid > 0 ? current.bid : current.last;
-          openDemoPosition({ pair, category: asset.category, side, amount, entryPrice, symbol: asset.symbol, quote: asset.quote, leverage });
-          setNotice(`${side} ${pair} opened at ${fmtLive(price)} with ${amount.toLocaleString()} ${asset?.quote}. See it on the Positions page.`);
-          navigate({ to: "/positions" });
+          try {
+            openDemoPosition({ pair, category: asset.category, side, amount, entryPrice, symbol: asset.symbol, quote: asset.quote, leverage });
+            setNotice(`${side} ${pair} opened at ${fmtLive(price)} with ${amount.toLocaleString()} ${asset?.quote}. See it on the Positions page.`);
+            navigate({ to: "/positions" });
+          } catch (err: any) {
+            setNotice(err?.message || "Trade order failed.");
+          }
         }}>Open {side}</Button>
         {notice && <p className="trade-notice" role="status"><ShieldCheck className="size-4 shrink-0"/>{notice}</p>}
         <p className="trade-footnote">Executes at live market prices.</p>

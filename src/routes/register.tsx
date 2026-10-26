@@ -411,7 +411,7 @@ function RegisterPage() {
                   A 6-digit confirmation code was sent to <strong className="text-[#eef2f6] font-mono">{email}</strong>.
                   <br />
                   <span className="text-[#34cc9b]">
-                    ইনবক্সে না পেলে Spam / Junk ফোল্ডার চেক করুন।
+                    If not found in your Inbox, please check your Spam / Junk folder.
                   </span>
                 </p>
 

@@ -132,9 +132,9 @@ export function TrialFundModal() {
               <Zap className="size-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="font-semibold text-white">Trade Normally (Manual & AI)</div>
+              <div className="font-semibold text-white">Exclusive 3-Day Auto AI Robot Trading</div>
               <div className="text-[11px] text-muted-foreground">
-                Take manual trades on <strong>Trade</strong> or launch automated <strong>AI Trade</strong> using this $20 fund.
+                This $20 trial fund operates exclusively with the automated <strong>3-Day AI Robot</strong> (manual trading with trial fund is disabled).
               </div>
             </div>
           </div>
@@ -184,11 +184,11 @@ export function TrialFundModal() {
                   type="button"
                   onClick={() => {
                     dismissModal();
-                    navigate({ to: "/trade" });
+                    navigate({ to: "/positions" });
                   }}
                   className="w-full py-2.5 px-3 rounded-xl bg-white/10 text-white font-medium text-xs hover:bg-white/15 transition-colors"
                 >
-                  Manual Trade
+                  View Position
                 </button>
               </div>
             </div>

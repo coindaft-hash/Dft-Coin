@@ -43,7 +43,7 @@ function saveStoredCodes(codes: StoredCode[]) {
 export async function dispatchVerificationCode(
   email: string,
   purpose: CodePurpose
-): Promise<{ code: string; success: boolean; message: string }> {
+): Promise<{ code: string; success: boolean; message: string; emailDelivered?: boolean; error?: string }> {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes("@")) {
     throw new Error("Invalid email address");
