@@ -108,6 +108,8 @@ export function purgeAllRegisteredAccounts() {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('vx-accounts');
       localStorage.removeItem('vx-mock-user');
+      localStorage.removeItem('vx-verification-codes');
+      localStorage.removeItem('vx-active-verification-codes');
       localStorage.removeItem('vertex-test-account-v1');
       localStorage.removeItem('vertex-test-account-v2');
       localStorage.removeItem('vx-trial-fund-v1');
@@ -115,7 +117,18 @@ export function purgeAllRegisteredAccounts() {
       localStorage.removeItem('vx-trial-fund-v3');
       localStorage.removeItem('vx-deposit-records');
       localStorage.removeItem('vx-credited-transfers');
-      localStorage.setItem('vx-accounts-wiped-v3', 'true');
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('sb-') || key.startsWith('vx-') || key.startsWith('vertex-'))) {
+          if (key !== 'vx-accounts-wiped-v5') {
+            localStorage.removeItem(key);
+          }
+        }
+      }
+      localStorage.setItem('vx-accounts-wiped-v5', 'true');
+    }
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.clear();
     }
   } catch {}
 }
@@ -123,7 +136,7 @@ export function purgeAllRegisteredAccounts() {
 // Auto-purge all previous registered accounts so users can create fresh accounts
 if (typeof window !== 'undefined') {
   try {
-    if (localStorage.getItem('vx-accounts-wiped-v3') !== 'true') {
+    if (localStorage.getItem('vx-accounts-wiped-v5') !== 'true') {
       purgeAllRegisteredAccounts();
     }
   } catch {}
@@ -178,7 +191,7 @@ function createMockSupabaseClient() {
         let user: any;
         if (existing) {
           // If account exists, verify password if one was set
-          if (existing.password && password && existing.password !== password && cleanEmail !== 'alex.vance@vertex.market') {
+          if (existing.password && password && existing.password !== password) {
             return { data: { user: null, session: null }, error: { message: 'Incorrect password.' } };
           }
           user = {
@@ -187,20 +200,10 @@ function createMockSupabaseClient() {
             user_metadata: existing.user_metadata || {},
           };
         } else {
-          // First time sign-in with this email in offline mode
-          const firstName = cleanEmail.split('@')[0] || 'User';
-          user = {
-            id: 'usr_' + Math.random().toString(36).slice(2, 9),
-            email: cleanEmail,
-            user_metadata: {
-              first_name: firstName,
-              last_name: '',
-              full_name: firstName,
-              invite_code: 'VTX8829',
-            },
+          return {
+            data: { user: null, session: null },
+            error: { message: 'No account found with this email. Please register first.' },
           };
-          accounts.push({ ...user, password: password || 'demo' });
-          saveAccounts(accounts);
         }
 
         try {

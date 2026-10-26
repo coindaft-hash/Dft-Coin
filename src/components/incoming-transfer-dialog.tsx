@@ -57,7 +57,8 @@ export function IncomingTransferDialog() {
   const [activeTransfer, setActiveTransfer] = useState<IncomingTransfer | null>(null);
 
   useEffect(() => {
-    const emailToListen = account?.email || "alex.vance@vertex.market";
+    const emailToListen = account?.email || "";
+    if (!emailToListen) return;
 
     const cleanup = listenForIncomingTransfers(emailToListen, (transfer) => {
       // Real transfer credit: add the received amount to the user's available balance!

@@ -86,7 +86,7 @@ function LoginPage() {
         const accounts = raw ? JSON.parse(raw) : [];
         const matched = accounts.find((a: any) => a.email?.toLowerCase() === cleanEmail);
         if (matched) {
-          if (matched.password && password && matched.password !== password && cleanEmail !== "alex.vance@vertex.market") {
+          if (matched.password && password && matched.password !== password) {
             setError("Incorrect password.");
             return false;
           }
@@ -94,23 +94,8 @@ function LoginPage() {
           goToHome();
           return true;
         } else {
-          // If no local record exists yet, initialize user and let them in
-          const firstName = cleanEmail.split("@")[0] || "User";
-          const newUser = {
-            id: "usr_" + Math.random().toString(36).slice(2, 9),
-            email: cleanEmail,
-            user_metadata: {
-              first_name: firstName,
-              last_name: "",
-              full_name: firstName,
-              invite_code: "VTX8829",
-            },
-          };
-          accounts.push({ ...newUser, password, created_at: new Date().toISOString() });
-          localStorage.setItem("vx-accounts", JSON.stringify(accounts));
-          localStorage.setItem("vx-mock-user", JSON.stringify(newUser));
-          goToHome();
-          return true;
+          setError("No account found with this email. Please register first.");
+          return false;
         }
       } catch {
         return false;
@@ -197,19 +182,6 @@ function LoginPage() {
                 <Input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} className="h-11 pl-9" />
               </div>
             </label>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Testing deployment?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail("alex.vance@vertex.market");
-                  setPassword("demo");
-                }}
-                className="font-medium text-primary hover:underline"
-              >
-                Use demo account
-              </button>
-            </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="h-11 w-full" disabled={busy}>{busy && <Loader2 className="size-4 animate-spin" />}Sign in</Button>
             <div className="flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" /></div>
