@@ -23,7 +23,6 @@ import { VertexMark } from "@/components/vertex-logo";
 import {
   dispatchVerificationCode,
   verifyDispatchedCode,
-  getActiveVerificationCode,
 } from "@/lib/verification-codes";
 
 const FEE_RATE = 0.05; // 5% platform fee rate
@@ -50,7 +49,6 @@ export function WithdrawPage() {
   const [verificationCode, setVerificationCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const [activeWithdrawCode, setActiveWithdrawCode] = useState<string | null>(null);
 
   // Interactive focus states for fine-tuned icon and border styling
   const [focusedField, setFocusedField] = useState<"amount" | "password" | "code" | null>(null);
@@ -176,8 +174,7 @@ export function WithdrawPage() {
     }
 
     try {
-      const res = await dispatchVerificationCode(userEmail, "withdraw");
-      setActiveWithdrawCode(res.code);
+      await dispatchVerificationCode(userEmail, "withdraw");
       setCodeSent(true);
       setCountdown(59);
     } catch (err: any) {
@@ -570,21 +567,9 @@ export function WithdrawPage() {
                   }`}
                 >
                   {codeSent
-                    ? "Verification code sent to your email."
+                    ? "Verification code sent to your email. Check your Inbox or Spam folder."
                     : "Please request an email verification code first."}
                 </p>
-                {codeSent && activeWithdrawCode && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVerificationCode(activeWithdrawCode);
-                      toast.success("Code auto-filled!");
-                    }}
-                    className="text-xs font-semibold text-[#34cc9b] hover:text-[#12d49b] underline ml-2 shrink-0 cursor-pointer"
-                  >
-                    Auto-fill ({activeWithdrawCode})
-                  </button>
-                )}
               </div>
             )}
           </div>

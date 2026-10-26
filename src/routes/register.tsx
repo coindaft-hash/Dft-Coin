@@ -13,7 +13,6 @@ import { toast } from "sonner";
 import {
   dispatchVerificationCode,
   verifyDispatchedCode,
-  getActiveVerificationCode,
 } from "@/lib/verification-codes";
 
 export const Route = createFileRoute("/register")({
@@ -90,7 +89,6 @@ function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [googleModalOpen, setGoogleModalOpen] = useState(false);
-  const [showCodeHelper, setShowCodeHelper] = useState(false);
   const [emailDelivered, setEmailDelivered] = useState(false);
 
   const handleGoogleSuccess = (_user: any) => {
@@ -417,42 +415,7 @@ function RegisterPage() {
                   </span>
                 </p>
 
-                {/* Emergency backup disclosure */}
-                <div className="mt-3 pt-3 border-t border-[#1d2a38]">
-                  {!showCodeHelper ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowCodeHelper(true)}
-                      className="text-[11px] text-[#8b95a1] hover:text-[#34cc9b] underline transition-colors cursor-pointer"
-                    >
-                      ইমেইল পেতে সমস্যা হচ্ছে? ব্যাকআপ কোড দেখুন
-                    </button>
-                  ) : (
-                    <div className="pt-1">
-                      <p className="text-[11px] text-muted-foreground font-medium">Emergency Backup Code:</p>
-                      <div className="mt-1.5 flex items-center justify-center gap-2">
-                        <span className="font-mono text-xl font-bold tracking-widest text-[#34cc9b]">
-                          {getActiveVerificationCode(email, "register") || "••••••"}
-                        </span>
-                        {getActiveVerificationCode(email, "register") && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const c = getActiveVerificationCode(email, "register");
-                              if (c) {
-                                setCode(c);
-                                toast.success("Code auto-filled!");
-                              }
-                            }}
-                            className="text-xs bg-[#12342d] text-[#34cc9b] hover:bg-[#18463c] active:scale-95 px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer"
-                          >
-                            Auto-fill
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+
               </div>
 
               <div className="flex justify-center">

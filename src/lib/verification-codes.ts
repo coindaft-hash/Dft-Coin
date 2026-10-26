@@ -197,14 +197,3 @@ export async function verifyDispatchedCode(
   return { valid: false, error: "Invalid or expired verification code. Please check or request a new code." };
 }
 
-/**
- * Retrieves the currently active unexpired code for this email and purpose, if any.
- */
-export function getActiveVerificationCode(email: string, purpose: CodePurpose): string | null {
-  const cleanEmail = email.trim().toLowerCase();
-  const list = getStoredCodes();
-  const found = list.find(
-    (item) => item.email === cleanEmail && item.purpose === purpose && item.expiresAt > Date.now()
-  );
-  return found ? found.code : null;
-}
