@@ -14,6 +14,11 @@ import {
   dispatchVerificationCode,
   verifyDispatchedCode,
 } from "@/lib/verification-codes";
+import {
+  isValidInvitationCode,
+  generateInviteCodeForSeed,
+  recordReferralSignup,
+} from "@/lib/referral-team";
 
 export const Route = createFileRoute("/register")({
   ssr: false,
@@ -93,6 +98,31 @@ function RegisterPage() {
 
   const handleGoogleSuccess = (_user: any) => {
     try {
+      const email = _user?.email || "member@vertex.market";
+      const id = _user?.id || "usr_g_" + Math.random().toString(36).slice(2, 8);
+      const myInviteCode = generateInviteCodeForSeed(`${id}_${email}`);
+      const referrerCode = invite?.trim()?.toUpperCase() || "VTX8829";
+
+      const storedUser = {
+        id,
+        email,
+        user_metadata: {
+          first_name: _user?.user_metadata?.first_name || "Google",
+          last_name: _user?.user_metadata?.last_name || "Member",
+          full_name: _user?.user_metadata?.full_name || "Google Member",
+          my_invite_code: myInviteCode,
+          invite_code: myInviteCode,
+          referred_by: referrerCode,
+        },
+      };
+      localStorage.setItem("vx-mock-user", JSON.stringify(storedUser));
+      recordReferralSignup({
+        id,
+        email,
+        referrerCode,
+        myInviteCode,
+      });
+
       localStorage.setItem("vertex-test-account-v2", JSON.stringify({ balance: 0, positions: [], history: [], lastOpenedId: null }));
       localStorage.removeItem("vertex-test-account-v1");
       resetTrialFundForNewUser();
@@ -119,32 +149,7 @@ function RegisterPage() {
 
     setBusy(true);
 
-    const SYSTEM_CODES = ["VTX8829", "VERTEX", "VIP888", "ADMIN", "VTX2026", "VTX777"];
-    let isValidCode = SYSTEM_CODES.includes(trimmedInvite) || trimmedInvite.length >= 4;
-
-    if (!isValidCode) {
-      try {
-        const { data: validCode, error: codeErr } = await supabase.rpc("check_invite_code", { _code: trimmedInvite });
-        if (!codeErr && validCode) {
-          isValidCode = true;
-        }
-      } catch {
-        isValidCode = true;
-      }
-    }
-
-    // Check registered accounts locally as well
-    if (!isValidCode) {
-      try {
-        const raw = localStorage.getItem("vx-accounts");
-        if (raw) {
-          const accounts = JSON.parse(raw);
-          if (Array.isArray(accounts) && accounts.some((a: any) => a.user_metadata?.invite_code?.toUpperCase() === trimmedInvite)) {
-            isValidCode = true;
-          }
-        }
-      } catch {}
-    }
+    const isValidCode = isValidInvitationCode(trimmedInvite);
 
     if (!isValidCode) {
       setBusy(false);
@@ -152,14 +157,19 @@ function RegisterPage() {
     }
 
     const cleanEmail = parsed.data.email.trim().toLowerCase();
+    const userId = "usr_" + Math.random().toString(36).slice(2, 9);
+    const userOwnInviteCode = generateInviteCodeForSeed(`${userId}_${cleanEmail}`);
+
     const fallbackUser = {
-      id: "usr_" + Math.random().toString(36).slice(2, 9),
+      id: userId,
       email: cleanEmail,
       user_metadata: {
         first_name: parsed.data.firstName,
         last_name: parsed.data.lastName,
         full_name: `${parsed.data.firstName} ${parsed.data.lastName}`,
-        invite_code: trimmedInvite,
+        my_invite_code: userOwnInviteCode,
+        invite_code: userOwnInviteCode,
+        referred_by: trimmedInvite,
       },
     };
 
@@ -168,7 +178,13 @@ function RegisterPage() {
         const raw = localStorage.getItem("vx-accounts");
         const accounts = raw ? JSON.parse(raw) : [];
         const existingIdx = accounts.findIndex((a: any) => a.email?.toLowerCase() === cleanEmail);
-        const record = { ...userRecord, password, created_at: new Date().toISOString() };
+        const record = {
+          ...userRecord,
+          password,
+          created_at: new Date().toISOString(),
+          my_invite_code: userOwnInviteCode,
+          referred_by: trimmedInvite,
+        };
         if (existingIdx >= 0) {
           accounts[existingIdx] = record;
         } else {
@@ -176,6 +192,15 @@ function RegisterPage() {
         }
         localStorage.setItem("vx-accounts", JSON.stringify(accounts));
         localStorage.setItem("vx-mock-user", JSON.stringify(userRecord));
+
+        // Record referral connection to inviter's team
+        recordReferralSignup({
+          id: userRecord.id,
+          email: cleanEmail,
+          referrerCode: trimmedInvite,
+          myInviteCode: userOwnInviteCode,
+        });
+
         // Ensure registered user wallet starts strictly at 0.00
         localStorage.setItem("vertex-test-account-v2", JSON.stringify({ balance: 0, positions: [], history: [], lastOpenedId: null }));
         localStorage.removeItem("vertex-test-account-v1");
@@ -211,7 +236,9 @@ function RegisterPage() {
               first_name: parsed.data.firstName,
               last_name: parsed.data.lastName,
               full_name: `${parsed.data.firstName} ${parsed.data.lastName}`,
-              invite_code: trimmedInvite,
+              my_invite_code: userOwnInviteCode,
+              invite_code: userOwnInviteCode,
+              referred_by: trimmedInvite,
             },
           },
         });

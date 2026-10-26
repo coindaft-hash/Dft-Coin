@@ -20,7 +20,8 @@ describe("Cloud DAFT simulated trading", () => {
       const exit = side === "Long" ? 1.26 : 1.24;
       expect(positionStats(p, exit).pnl).toBeCloseTo(8);
       closeDemoPosition(p.id, exit);
-      const state = JSON.parse(localStorage.getItem("vertex-test-account-v1") ?? "{}");
+      const raw = localStorage.getItem("vertex-test-account-v2") || localStorage.getItem("vertex-test-account-v1") || "{}";
+      const state = JSON.parse(raw);
       expect(state.positions.some((row: { id: string }) => row.id === p.id)).toBe(false);
       expect(state.history[0].leverage).toBe(10);
       expect(state.history[0].pnl).toBeCloseTo(8);

@@ -48,6 +48,8 @@ import { tierFor } from "@/lib/vip-tiers";
 import { supabase, purgeAllRegisteredAccounts } from "@/integrations/supabase/client";
 import { useTrialFund } from "@/lib/trial-fund";
 import { TrialFundModal } from "@/components/trial-fund-modal";
+import { getProfileSummaryForUser } from "@/lib/referral-team";
+import { MyInviteCode } from "@/components/my-invite-code";
 import aiRobot from "@/assets/ai-robot.png";
 
 type Summary = {
@@ -146,52 +148,32 @@ export function ProfilePage() {
 
   const load = useCallback(async () => {
     setError("");
+    const local = getProfileSummaryForUser(account);
     try {
       await supabase.rpc("ensure_my_wallet");
       const { data, error: err } = await supabase.rpc("profile_summary");
       if (!err && data) {
         const row = data as Record<string, unknown>;
         setSummary({
-          balance: num(row["balance"]),
-          earnings: num(row["earnings"]),
-          deposited: num(row["deposited"]),
-          withdrawn: num(row["withdrawn"]),
-          team_count: num(row["team_count"]),
-          deposit_count: num(row["deposit_count"]),
-          withdrawal_count: num(row["withdrawal_count"]),
-          transfer_count: num(row["transfer_count"]),
+          balance: availableBalance,
+          earnings: num(row["earnings"] ?? local.earnings),
+          deposited: num(row["deposited"] ?? 0),
+          withdrawn: num(row["withdrawn"] ?? 0),
+          team_count: num(row["team_count"] ?? local.team_count),
+          deposit_count: num(row["deposit_count"] ?? 0),
+          withdrawal_count: num(row["withdrawal_count"] ?? 0),
+          transfer_count: num(row["transfer_count"] ?? 0),
         });
-        try {
-          const start = new Date();
-          start.setHours(0, 0, 0, 0);
-          const { data: rewards } = await supabase
-            .from("wallet_ledger")
-            .select("amount")
-            .eq("kind", "referral_bonus")
-            .gte("created_at", start.toISOString());
-          setTodayEarnings((rewards ?? []).reduce((sum, reward) => sum + num(reward.amount), 0));
-        } catch {
-          setTodayEarnings(0);
-        }
+        setTodayEarnings(local.earnings);
         return;
       }
     } catch {
       // Supabase unavailable or local session
     }
 
-    // Graceful fallback for local / offline sessions: never display red error
-    setSummary({
-      balance: availableBalance,
-      earnings: 0,
-      deposited: 0,
-      withdrawn: 0,
-      team_count: 0,
-      deposit_count: 0,
-      withdrawal_count: 0,
-      transfer_count: 0,
-    });
+    setSummary(local);
     setTodayEarnings(0);
-  }, [availableBalance]);
+  }, [account, availableBalance]);
 
   useEffect(() => {
     if (account) void load();
@@ -201,7 +183,7 @@ export function ProfilePage() {
     if (account) setForm({ firstName: account.firstName, lastName: account.lastName });
   }, [account?.id]);
 
-  const tier = tierFor(summary?.balance ?? 0);
+  const tier = tierFor(availableBalance);
   const [wholeBalance, balanceCents] = (summary?.balance ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).split(".");
 
   async function copyId() {
@@ -366,6 +348,10 @@ export function ProfilePage() {
           </button>
         </section>
       )}
+
+      <div className="-mx-4">
+        <MyInviteCode />
+      </div>
 
       {/* Common Tools */}
       <section className="mt-6">

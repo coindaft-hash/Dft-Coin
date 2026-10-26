@@ -9,32 +9,87 @@ import { supabase } from "@/integrations/supabase/client";
 import { TeamOverview, type TeamMember } from "@/components/team-overview";
 
 
+import { getUserInviteCode, getReferralLink, getTeamMembersForUser, getTeamWithdrawalsForUser, getReferralRewardsForUser } from "@/lib/referral-team";
+
 function useInviteCode() {
-  const [code, setCode] = useState<string | null>(null);
+  const { account } = useAccount();
+  const [code, setCode] = useState<string>(() => getUserInviteCode(account));
   useEffect(() => {
     let alive = true;
+    const local = getUserInviteCode(account);
+    if (local) setCode(local);
     void supabase.rpc("ensure_my_invite_code").then(({ data }) => {
-      if (alive && typeof data === "string") setCode(data);
+      if (alive && typeof data === "string" && data.length >= 4) setCode(data);
     });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [account]);
   return code;
 }
 
 function CodeCard({ code, saved, onSave }: { code: string; saved: boolean; onSave: () => void }) {
+  const referralLink = getReferralLink(code);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(referralLink);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+      toast.success("Referral link copied to clipboard");
+    } catch {
+      toast.error("Copy unavailable");
+    }
+  };
+
+  const shareLink = async () => {
+    const nav = navigator as Navigator & {
+      share?: (data: { title: string; text: string; url: string }) => Promise<void>;
+    };
+    if (nav.share) {
+      try {
+        await nav.share({
+          title: "Join Vertex",
+          text: `Join me on Vertex! Use my invitation code ${code} to get a $20 Welcome Trial Fund.`,
+          url: referralLink,
+        });
+        return;
+      } catch {}
+    }
+    await copyLink();
+  };
+
   return (
-    <section className="mt-5 rounded-2xl border border-border bg-gradient-to-br from-primary/20 via-card to-card p-4">
-      <p className="text-xs text-muted-foreground">Your invitation code</p>
-      <div className="mt-1 flex items-center gap-2">
-        <p className="min-w-0 flex-1 truncate font-mono text-2xl font-extrabold tracking-wider text-primary">{code}</p>
-        <Button variant="ghost" size="icon" className="shrink-0" onClick={onSave} aria-label={saved ? "Code copied" : "Copy invitation code"}>
-          {saved ? <Check className="size-4" /> : <Copy className="size-4" />}
-        </Button>
+    <section className="mt-5 rounded-2xl border border-border bg-gradient-to-br from-primary/20 via-card to-card p-4 space-y-3">
+      <div>
+        <p className="text-xs text-muted-foreground">Your invitation code</p>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p className="min-w-0 flex-1 truncate font-mono text-2xl font-extrabold tracking-wider text-primary">{code}</p>
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 px-3 text-xs" onClick={onSave} aria-label={saved ? "Code copied" : "Copy invitation code"}>
+            {saved ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
+            {saved ? "Copied" : "Copy Code"}
+          </Button>
+        </div>
       </div>
-      <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
-        Anyone who registers with this code is added to your team, and $5 is credited to your balance when their account opens.
+
+      <div className="rounded-xl border border-border/80 bg-background/50 p-2.5">
+        <p className="text-[10px] text-muted-foreground">Your referral link</p>
+        <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{referralLink}</p>
+        <div className="mt-2 flex items-center gap-2">
+          <Button variant="secondary" size="sm" className="h-7 text-xs flex-1 gap-1.5" onClick={copyLink}>
+            {linkCopied ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+            <span>{linkCopied ? "Link Copied" : "Copy Link"}</span>
+          </Button>
+          <Button variant="default" size="sm" className="h-7 text-xs flex-1 gap-1.5" onClick={shareLink}>
+            <Share2 className="size-3" />
+            <span>Share Link</span>
+          </Button>
+        </div>
+      </div>
+
+      <p className="text-[11px] leading-5 text-muted-foreground">
+        Anyone who registers with your link or code is automatically added to your Level A team, and $5 is credited to your balance when their account opens.
       </p>
     </section>
   );
@@ -119,14 +174,25 @@ export function TeamPage() {
       supabase.rpc("my_team_levels", { _day_start: start.toISOString() }),
       supabase.rpc("my_team_withdrawals", { _limit: 50 }),
     ]);
-    if (team.error) {
-      setState("error");
-      return;
+
+    let memberRows: TeamMember[] = [];
+    if (!team.error && Array.isArray(team.data)) {
+      memberRows = team.data;
+    } else {
+      memberRows = getTeamMembersForUser(account);
     }
-    setRows(team.data ?? []);
-    setWithdrawals((teamWithdrawals.data ?? []) as WithdrawalRow[]);
+
+    let withdrawalRows: WithdrawalRow[] = [];
+    if (!teamWithdrawals.error && Array.isArray(teamWithdrawals.data)) {
+      withdrawalRows = teamWithdrawals.data as WithdrawalRow[];
+    } else {
+      withdrawalRows = getTeamWithdrawalsForUser(account);
+    }
+
+    setRows(memberRows);
+    setWithdrawals(withdrawalRows);
     setState("ready");
-  }, []);
+  }, [account]);
 
   useEffect(() => {
     if (account) void load();
@@ -138,6 +204,7 @@ export function TeamPage() {
       await navigator.clipboard.writeText(code);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+      toast.success("Invitation code copied: " + code);
     } catch {
       toast.error("Copy unavailable. Select the code and copy it manually.");
     }
@@ -183,16 +250,23 @@ export function ReferralPage() {
       supabase.from("wallet_ledger").select("*").eq("kind", "referral_bonus").order("created_at", { ascending: false }).limit(50),
       supabase.rpc("my_team"),
     ]);
-    if (summary.error || ledger.error) {
-      setState("error");
-      return;
-    }
-    const row = (summary.data ?? {}) as Record<string, unknown>;
-    setEarned(Number(row["earnings"] ?? 0));
-    setMembers(Array.isArray(team.data) ? team.data.length : 0);
-    setRewards((ledger.data ?? []) as { id: string; amount: number; note: string; created_at: string }[]);
+
+    const localRewards = getReferralRewardsForUser(account);
+    const localTeam = getTeamMembersForUser(account);
+
+    const row = (!summary.error && summary.data ? summary.data : {}) as Record<string, unknown>;
+    const earnedVal = Number(row["earnings"] ?? localRewards.total);
+    setEarned(earnedVal);
+
+    const teamCount = Array.isArray(team.data) ? team.data.length : localTeam.length;
+    setMembers(teamCount);
+
+    const rewardList = Array.isArray(ledger.data) && ledger.data.length > 0
+      ? (ledger.data as any[])
+      : localRewards.history;
+    setRewards(rewardList);
     setState("ready");
-  }, []);
+  }, [account]);
 
   useEffect(() => {
     if (account) void load();
@@ -200,21 +274,22 @@ export function ReferralPage() {
 
   async function share() {
     if (!code) return;
-    const message = `Join me on Vertex — invitation code ${code}`;
-    const nav = navigator as Navigator & { share?: (data: { text: string }) => Promise<void> };
+    const link = getReferralLink(code);
+    const message = `Join me on Vertex! Use my invitation code ${code} to claim a $20 Welcome Trial Fund: ${link}`;
+    const nav = navigator as Navigator & { share?: (data: { title: string; text: string; url: string }) => Promise<void> };
     if (nav.share) {
       try {
-        await nav.share({ text: message });
+        await nav.share({ title: "Join Vertex", text: message, url: link });
         return;
       } catch {
         /* user dismissed the share sheet */
       }
     }
     try {
-      await navigator.clipboard.writeText(message);
+      await navigator.clipboard.writeText(link);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-      toast.success("Invitation message copied");
+      toast.success("Referral link copied to clipboard");
     } catch {
       toast.error("Copy unavailable. Share the code yourself.");
     }
@@ -226,6 +301,7 @@ export function ReferralPage() {
       await navigator.clipboard.writeText(code);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+      toast.success("Invitation code copied: " + code);
     } catch {
       toast.error("Copy unavailable. Select the code and copy it manually.");
     }

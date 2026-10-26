@@ -223,9 +223,21 @@ function createMockSupabaseClient() {
         const accounts = getStoredAccounts();
         const existingIndex = accounts.findIndex((a: any) => a.email?.toLowerCase() === cleanEmail);
 
-        const meta = options?.data || { first_name: 'Member', full_name: 'Member', invite_code: 'VTX8829' };
+        const { generateInviteCodeForSeed, recordReferralSignup } = await import('@/lib/referral-team');
+        const userId = 'usr_' + Math.random().toString(36).slice(2, 9);
+        const myInviteCode = generateInviteCodeForSeed(`${userId}_${cleanEmail}`);
+        const referrerCode = options?.data?.referred_by || options?.data?.invite_code || 'VTX8829';
+
+        const meta = {
+          first_name: 'Member',
+          full_name: 'Member',
+          ...(options?.data || {}),
+          my_invite_code: myInviteCode,
+          invite_code: myInviteCode,
+          referred_by: referrerCode,
+        };
         const user = {
-          id: 'usr_' + Math.random().toString(36).slice(2, 9),
+          id: userId,
           email: cleanEmail,
           user_metadata: meta,
         };
@@ -234,6 +246,8 @@ function createMockSupabaseClient() {
           ...user,
           password: password || 'demo',
           created_at: new Date().toISOString(),
+          my_invite_code: myInviteCode,
+          referred_by: referrerCode,
         };
 
         if (existingIndex >= 0) {
@@ -242,6 +256,14 @@ function createMockSupabaseClient() {
           accounts.push(accountRecord);
         }
         saveAccounts(accounts);
+
+        // Record referral connection and credit $5 bonus
+        recordReferralSignup({
+          id: userId,
+          email: cleanEmail,
+          referrerCode,
+          myInviteCode,
+        });
 
         try {
           localStorage.setItem('vx-mock-user', JSON.stringify(user));
@@ -302,64 +324,57 @@ function createMockSupabaseClient() {
     },
     rpc: async (fnName: string, args: any) => {
       if (fnName === 'ensure_my_wallet') {
+        const { getAvailableBalance, getFrozenBalance, getTotalBalance } = await import('@/lib/demo-positions');
         return {
           data: {
-            available_balance: 15420.5,
-            locked_balance: 1250.0,
-            total_deposited: 35000.0,
-            total_withdrawn: 8500.0,
+            available_balance: getAvailableBalance(),
+            locked_balance: getFrozenBalance(),
+            total_balance: getTotalBalance(),
+            total_deposited: 0,
+            total_withdrawn: 0,
             currency: 'USDT',
           },
           error: null,
         };
       }
       if (fnName === 'profile_summary') {
+        const { getProfileSummaryForUser } = await import('@/lib/referral-team');
+        const summary = getProfileSummaryForUser(getStoredUser());
         return {
-          data: {
-            balance: 15420.5,
-            today_earnings: 218.4,
-            total_earnings: 4520.1,
-            team_count: 18,
-            vip_level: 2,
-          },
+          data: summary,
           error: null,
         };
       }
       if (fnName === 'ensure_my_invite_code') {
-        return { data: 'VTX8829', error: null };
+        const { getUserInviteCode } = await import('@/lib/referral-team');
+        const code = getUserInviteCode(getStoredUser());
+        return { data: code, error: null };
       }
       if (fnName === 'check_invite_code') {
-        return { data: true, error: null };
+        const { isValidInvitationCode } = await import('@/lib/referral-team');
+        return { data: isValidInvitationCode(args?._code), error: null };
       }
       if (fnName === 'my_team_levels') {
+        const { getTeamMembersForUser } = await import('@/lib/referral-team');
+        const members = getTeamMembersForUser(getStoredUser());
         return {
-          data: {
-            level_a: 6,
-            level_b: 8,
-            level_c: 3,
-            level_d: 1,
-            funded_count: 12,
-            total_rewards: 1250.0,
-          },
+          data: members,
           error: null,
         };
       }
       if (fnName === 'my_team_withdrawals') {
+        const { getTeamWithdrawalsForUser } = await import('@/lib/referral-team');
+        const withdrawals = getTeamWithdrawalsForUser(getStoredUser());
         return {
-          data: [
-            { member: 'u***8@gmail.com', level: 'A', network: 'TRC20', amount: 500, status: 'completed', created_at: new Date(Date.now() - 3600000 * 4).toISOString() },
-            { member: 'k***2@crypto.org', level: 'B', network: 'BEP20', amount: 1200, status: 'completed', created_at: new Date(Date.now() - 3600000 * 18).toISOString() },
-            { member: 's***a@vertex.io', level: 'A', network: 'TRC20', amount: 250, status: 'processing', created_at: new Date(Date.now() - 3600000 * 2).toISOString() },
-          ],
+          data: withdrawals,
           error: null,
         };
       }
       if (fnName === 'my_team') {
+        const { getTeamMembersForUser } = await import('@/lib/referral-team');
+        const members = getTeamMembersForUser(getStoredUser());
         return {
-          data: [
-            { id: '1', email: 'user_a1@gmail.com', level: 'A', funded: true, deposit: 2500, created_at: new Date().toISOString() },
-            { id: '2', email: 'user_b1@gmail.com', level: 'B', funded: true, deposit: 1000, created_at: new Date().toISOString() },
-          ],
+          data: members,
           error: null,
         };
       }
@@ -520,6 +535,50 @@ function wrapSupabaseAuth(client: any) {
   return new Proxy(client, {
     get(target, prop, receiver) {
       if (prop === 'auth') return wrappedAuth;
+      if (prop === 'rpc') {
+        return async (fnName: string, args: any) => {
+          try {
+            const res = await target.rpc(fnName, args);
+            if (!res?.error && res?.data !== null && res?.data !== undefined) {
+              return res;
+            }
+          } catch {}
+
+          if (fnName === 'ensure_my_invite_code') {
+            const { getUserInviteCode } = await import('@/lib/referral-team');
+            return { data: getUserInviteCode(getLocalUser()), error: null };
+          }
+          if (fnName === 'check_invite_code') {
+            const { isValidInvitationCode } = await import('@/lib/referral-team');
+            return { data: isValidInvitationCode(args?._code), error: null };
+          }
+          if (fnName === 'profile_summary') {
+            const { getProfileSummaryForUser } = await import('@/lib/referral-team');
+            return { data: getProfileSummaryForUser(getLocalUser()), error: null };
+          }
+          if (fnName === 'my_team_levels' || fnName === 'my_team') {
+            const { getTeamMembersForUser } = await import('@/lib/referral-team');
+            return { data: getTeamMembersForUser(getLocalUser()), error: null };
+          }
+          if (fnName === 'my_team_withdrawals') {
+            const { getTeamWithdrawalsForUser } = await import('@/lib/referral-team');
+            return { data: getTeamWithdrawalsForUser(getLocalUser()), error: null };
+          }
+          if (fnName === 'ensure_my_wallet') {
+            const { getAvailableBalance, getFrozenBalance, getTotalBalance } = await import('@/lib/demo-positions');
+            return {
+              data: {
+                available_balance: getAvailableBalance(),
+                locked_balance: getFrozenBalance(),
+                total_balance: getTotalBalance(),
+                currency: 'USDT',
+              },
+              error: null,
+            };
+          }
+          return { data: null, error: null };
+        };
+      }
       return Reflect.get(target, prop, receiver);
     },
   });
