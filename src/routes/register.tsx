@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Loader2, Mail, UserPlus } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, Mail, RefreshCw, UserPlus } from "lucide-react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,6 +90,8 @@ function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [googleModalOpen, setGoogleModalOpen] = useState(false);
+  const [showCodeHelper, setShowCodeHelper] = useState(false);
+  const [emailDelivered, setEmailDelivered] = useState(false);
 
   const handleGoogleSuccess = (_user: any) => {
     try {
@@ -217,12 +219,17 @@ function RegisterPage() {
         });
       } catch {}
 
-      // 2. Dispatch 6-digit verification code (sends to email and broadcasts on-screen security notification)
-      await dispatchVerificationCode(cleanEmail, "register");
+      // 2. Dispatch 6-digit verification code (sends to real email)
+      const res = await dispatchVerificationCode(cleanEmail, "register");
 
       setBusy(false);
       setStep("otp");
-      setInfo(`A 6-digit confirmation code has been sent to ${cleanEmail}. Check your inbox or copy the code below.`);
+      setEmailDelivered(!!res.emailDelivered);
+      setInfo(
+        res.emailDelivered
+          ? `A 6-digit verification code has been sent to your email (${cleanEmail}). Check your inbox or Spam folder.`
+          : `A 6-digit confirmation code has been generated for ${cleanEmail}.`
+      );
     } catch (err: any) {
       setBusy(false);
       setError(err?.message || "Failed to send code. Please try again.");
@@ -291,9 +298,14 @@ function RegisterPage() {
     setBusy(true);
     const cleanEmail = email.trim().toLowerCase();
     try {
-      await dispatchVerificationCode(cleanEmail, "register");
+      const res = await dispatchVerificationCode(cleanEmail, "register");
       setBusy(false);
-      setInfo(`A fresh 6-digit code has been sent to ${cleanEmail}.`);
+      setEmailDelivered(!!res.emailDelivered);
+      setInfo(
+        res.emailDelivered
+          ? `A fresh 6-digit verification code has been sent to ${cleanEmail}. Please check your inbox or Spam folder.`
+          : `A fresh 6-digit code has been generated for ${cleanEmail}.`
+      );
     } catch {
       setBusy(false);
       setInfo(`A verification code was requested for ${cleanEmail}.`);
@@ -389,32 +401,58 @@ function RegisterPage() {
             </form>
           ) : (
             <div className="space-y-4">
-              {/* Security Verification Code Badge */}
-              <div className="rounded-xl bg-[#111b27] border border-[#1d2a38] p-3 text-center">
-                <p className="text-xs text-muted-foreground font-medium">Vertex Security Verification Code</p>
-                <div className="mt-1 flex items-center justify-center gap-2.5">
-                  <span className="font-mono text-xl font-bold tracking-widest text-[#34cc9b]">
-                    {getActiveVerificationCode(email, "register") || "••••••"}
+              {/* Email Delivery Card */}
+              <div className="rounded-xl bg-[#111b27] border border-[#1d2a38] p-4 text-center">
+                <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-[#12342d] text-[#34cc9b]">
+                  <Mail className="size-5" />
+                </div>
+                <h3 className="mt-2 text-sm font-semibold text-[#eef2f6]">
+                  {emailDelivered ? "Check your email inbox" : "Verification Code Sent"}
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                  A 6-digit confirmation code was sent to <strong className="text-[#eef2f6] font-mono">{email}</strong>.
+                  <br />
+                  <span className="text-[#34cc9b]">
+                    ইনবক্সে না পেলে Spam / Junk ফোল্ডার চেক করুন।
                   </span>
-                  {getActiveVerificationCode(email, "register") && (
+                </p>
+
+                {/* Emergency backup disclosure */}
+                <div className="mt-3 pt-3 border-t border-[#1d2a38]">
+                  {!showCodeHelper ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        const c = getActiveVerificationCode(email, "register");
-                        if (c) {
-                          setCode(c);
-                          toast.success("Code auto-filled!");
-                        }
-                      }}
-                      className="text-xs bg-[#12342d] text-[#34cc9b] hover:bg-[#18463c] active:scale-95 px-2.5 py-1 rounded-md font-semibold transition-all"
+                      onClick={() => setShowCodeHelper(true)}
+                      className="text-[11px] text-[#8b95a1] hover:text-[#34cc9b] underline transition-colors cursor-pointer"
                     >
-                      Auto-fill
+                      ইমেইল পেতে সমস্যা হচ্ছে? ব্যাকআপ কোড দেখুন
                     </button>
+                  ) : (
+                    <div className="pt-1">
+                      <p className="text-[11px] text-muted-foreground font-medium">Emergency Backup Code:</p>
+                      <div className="mt-1.5 flex items-center justify-center gap-2">
+                        <span className="font-mono text-xl font-bold tracking-widest text-[#34cc9b]">
+                          {getActiveVerificationCode(email, "register") || "••••••"}
+                        </span>
+                        {getActiveVerificationCode(email, "register") && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const c = getActiveVerificationCode(email, "register");
+                              if (c) {
+                                setCode(c);
+                                toast.success("Code auto-filled!");
+                              }
+                            }}
+                            className="text-xs bg-[#12342d] text-[#34cc9b] hover:bg-[#18463c] active:scale-95 px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer"
+                          >
+                            Auto-fill
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
-                <p className="text-[11px] text-[#8b95a1] mt-1">
-                  Sent to {email}. You can also check your email inbox.
-                </p>
               </div>
 
               <div className="flex justify-center">

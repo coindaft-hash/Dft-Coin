@@ -1,3 +1,5 @@
+import { getBrevoApiKey, BREVO_DEFAULT_SENDER } from "./brevo-credentials";
+
 export type EmailProvider = "resend" | "brevo" | "smtp";
 
 export type EmailConfig = {
@@ -11,9 +13,9 @@ const STORAGE_KEY = "vx-email-service-config";
 
 export const DEFAULT_EMAIL_CONFIG: EmailConfig = {
   provider: "brevo",
-  apiKey: (typeof process !== "undefined" ? process.env?.["BREVO_API_KEY"] : "") || (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_BREVO_API_KEY) || "",
-  senderName: "VERTEX CRYPTO",
-  senderEmail: "smsiddiku@gmail.com",
+  apiKey: getBrevoApiKey(),
+  senderName: BREVO_DEFAULT_SENDER.name,
+  senderEmail: BREVO_DEFAULT_SENDER.email,
 };
 
 export function getEmailConfig(): EmailConfig {
@@ -22,21 +24,11 @@ export function getEmailConfig(): EmailConfig {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed?.apiKey) return parsed;
+        if (parsed?.apiKey && parsed.apiKey.trim().length > 5) return parsed;
       }
     }
 
-    const envBrevo = typeof process !== "undefined" ? process.env?.["BREVO_API_KEY"] : undefined;
     const envResend = typeof process !== "undefined" ? process.env?.["RESEND_API_KEY"] : undefined;
-
-    if (envBrevo) {
-      return {
-        provider: "brevo",
-        apiKey: envBrevo,
-        senderName: "VERTEX CRYPTO",
-        senderEmail: "smsiddiku@gmail.com",
-      };
-    }
     if (envResend) {
       return {
         provider: "resend",
@@ -46,7 +38,12 @@ export function getEmailConfig(): EmailConfig {
     }
   } catch {}
 
-  return DEFAULT_EMAIL_CONFIG;
+  return {
+    provider: "brevo",
+    apiKey: getBrevoApiKey(),
+    senderName: BREVO_DEFAULT_SENDER.name,
+    senderEmail: BREVO_DEFAULT_SENDER.email,
+  };
 }
 
 export function saveEmailConfig(config: EmailConfig) {

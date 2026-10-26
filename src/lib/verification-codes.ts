@@ -66,7 +66,10 @@ export async function dispatchVerificationCode(
   });
   saveStoredCodes(current);
 
-  // 1. Try third-party real email service (Resend / Brevo)
+  let emailDelivered = false;
+  let emailError: string | undefined;
+
+  // 1. Try third-party real email service (Brevo / Resend)
   try {
     const thirdPartyRes = await sendEmailViaThirdParty({
       to: cleanEmail,
@@ -74,9 +77,14 @@ export async function dispatchVerificationCode(
       purpose,
     });
     if (thirdPartyRes.sent) {
+      emailDelivered = true;
       console.info(`[Vertex Email] Dispatched real email to ${cleanEmail} via ${thirdPartyRes.provider}`);
+    } else if (thirdPartyRes.error) {
+      emailError = thirdPartyRes.error;
+      console.warn(`[Vertex Email] Failed to send to ${cleanEmail}:`, thirdPartyRes.error);
     }
-  } catch (err) {
+  } catch (err: any) {
+    emailError = err?.message || "Failed to reach email service";
     console.warn("Third-party email dispatch notice:", err);
   }
 
@@ -94,32 +102,43 @@ export async function dispatchVerificationCode(
   if (typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent("vx-code-received", {
-        detail: { email: cleanEmail, code, purpose },
+        detail: { email: cleanEmail, code, purpose, emailDelivered },
       })
     );
   }
 
-  // Display top-tier security toast with Copy button
-  toast.success(`Verification Code: ${code}`, {
-    description: `Sent to ${cleanEmail}. Click to copy or check your inbox.`,
-    duration: 12000,
-    action: {
-      label: "Copy Code",
-      onClick: () => {
-        try {
-          navigator.clipboard.writeText(code);
-          toast.info("Verification code copied to clipboard!");
-        } catch {}
+  if (emailDelivered) {
+    toast.success(`Verification email sent to ${cleanEmail}`, {
+      description: "Please check your inbox (and Spam/Junk folder) for the 6-digit code.",
+      duration: 10000,
+    });
+  } else {
+    // If external delivery encountered an issue, provide the security code directly
+    toast.info(`Verification Code: ${code}`, {
+      description: emailError ? `Email notice: ${emailError}. You can copy the code.` : `Sent to ${cleanEmail}. Check your inbox.`,
+      duration: 12000,
+      action: {
+        label: "Copy Code",
+        onClick: () => {
+          try {
+            navigator.clipboard.writeText(code);
+            toast.info("Verification code copied to clipboard!");
+          } catch {}
+        },
       },
-    },
-  });
+    });
+  }
 
   console.info(`[Vertex Security] 6-digit verification code for ${cleanEmail} (${purpose}):`, code);
 
   return {
     code,
     success: true,
-    message: `Verification code sent to ${cleanEmail}`,
+    emailDelivered,
+    error: emailError,
+    message: emailDelivered
+      ? `Verification code emailed to ${cleanEmail}`
+      : `Verification code generated for ${cleanEmail}`,
   };
 }
 
