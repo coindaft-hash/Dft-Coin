@@ -108,12 +108,16 @@ export function getUserInviteCode(user?: { id?: string; email?: string; user_met
 
 /**
  * Returns full referral registration link: https://<domain>/register?invite=<CODE>
+ * Ensures the link begins with vertex on Vercel deployment.
  */
 export function getReferralLink(code: string): string {
-  const origin = typeof window !== "undefined" && window.location.origin
-    ? window.location.origin
-    : "https://vertex.market";
-  return `${origin}/register?invite=${encodeURIComponent(code)}`;
+  if (typeof window !== "undefined" && window.location.origin) {
+    const origin = window.location.origin;
+    if (origin.includes("vercel.app") || origin.includes("vertex")) {
+      return `${origin}/register?invite=${encodeURIComponent(code)}`;
+    }
+  }
+  return `https://vertex-market.vercel.app/register?invite=${encodeURIComponent(code)}`;
 }
 
 /**

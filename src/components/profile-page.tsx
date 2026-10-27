@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import {
   ArrowCircleDown, ArrowCircleUp, ArrowsLeftRight,
   Gift as GiftIcon, ClipboardText, Crown as CrownIcon,
-  Wallet, Question, GearSix, Headset, type Icon as ProfileIcon,
+  Wallet, Question, GearSix, Headset, ShieldCheck as ShieldCheckIcon, type Icon as ProfileIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,7 +49,6 @@ import { supabase, purgeAllRegisteredAccounts } from "@/integrations/supabase/cl
 import { useTrialFund } from "@/lib/trial-fund";
 import { TrialFundModal } from "@/components/trial-fund-modal";
 import { getProfileSummaryForUser } from "@/lib/referral-team";
-import { MyInviteCode } from "@/components/my-invite-code";
 import aiRobot from "@/assets/ai-robot.png";
 
 type Summary = {
@@ -86,6 +85,7 @@ const implementsTools: (
   { name: "FAQ", icon: Question, to: "/faq", tone: "community" },
   { name: "Settings", icon: GearSix, to: "/settings", tone: "account" },
   { name: "Support", icon: Headset, to: "/support", tone: "support" },
+  { name: "Admin Panel (এডমিন)", icon: ShieldCheckIcon, to: "/admin", tone: "reward" },
 ];
 
 function SectionTitle({ children }: { children: string }) {
@@ -348,10 +348,6 @@ export function ProfilePage() {
           </button>
         </section>
       )}
-
-      <div className="-mx-4">
-        <MyInviteCode />
-      </div>
 
       {/* Common Tools */}
       <section className="mt-6">

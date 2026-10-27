@@ -259,21 +259,37 @@ export function WithdrawPage() {
         });
       } catch {}
 
-      // 3. Save withdrawal record locally
+      // 3. Save withdrawal record locally and sync with Admin Panel
       try {
-        const stored = localStorage.getItem("vx-withdrawals");
-        const list = stored ? JSON.parse(stored) : [];
-        list.unshift({
+        const record = {
           id: "wth_" + Date.now(),
+          user_id: account?.id || "usr_client",
+          user_name: account?.fullName || "ওয়েবসাইট ইউজার",
+          user_email: account?.email || "user@vertex.market",
           amount: amountNum,
           fee: feeAmount,
           actualArrival,
-          network: targetNetwork,
+          network: targetNetwork ? `USDT (${targetNetwork.toUpperCase()})` : "USDT (TRC20)",
           address: targetAddress,
           status: "pending",
           created_at: new Date().toISOString(),
-        });
+        };
+
+        const stored = localStorage.getItem("vx-withdrawals");
+        const list = stored ? JSON.parse(stored) : [];
+        list.unshift(record);
         localStorage.setItem("vx-withdrawals", JSON.stringify(list));
+
+        // Sync to admin panel store directly
+        const adminStored = localStorage.getItem("vx_admin_withdrawals");
+        const adminList = adminStored ? JSON.parse(adminStored) : [];
+        adminList.unshift(record);
+        localStorage.setItem("vx_admin_withdrawals", JSON.stringify(adminList));
+
+        // Attempt Supabase insert if connected
+        try {
+          await supabase.from("withdrawals").insert(record);
+        } catch {}
       } catch {}
 
       setSuccessNotice("Withdrawal request submitted successfully.");
