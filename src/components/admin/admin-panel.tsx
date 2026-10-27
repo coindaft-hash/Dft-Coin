@@ -26,6 +26,7 @@ import {
   Plus,
   Minus,
   Wallet,
+  Lock,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -60,7 +61,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 type TabView = "dashboard" | "users" | "deposits" | "withdrawals" | "referrals";
 
-export function AdminPanel() {
+export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
   const [activeTab, setActiveTab] = useState<TabView>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [chartDays, setChartDays] = useState<7 | 30>(7);
@@ -592,6 +593,18 @@ export function AdminPanel() {
                   </button>
                 </div>
               </div>
+
+              {/* Lock Session Button */}
+              {onLock && (
+                <button
+                  onClick={onLock}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#291014] hover:bg-[#3d161d] border border-[#ff5a63]/30 text-xs font-semibold text-[#ff7078] transition-all"
+                  title="Lock admin session"
+                >
+                  <Lock className="size-3.5" />
+                  <span className="hidden sm:inline">Lock Desk</span>
+                </button>
+              )}
             </div>
           </header>
 

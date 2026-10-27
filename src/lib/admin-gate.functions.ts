@@ -47,7 +47,7 @@ export const adminGateStatus = createServerFn({ method: "GET" }).handler(async (
 export const unlockAdmin = createServerFn({ method: "POST" })
   .inputValidator((d: { password: string }) => ({ password: String(d?.password ?? "").slice(0, 200) }))
   .handler(async ({ data }) => {
-    const expected = (typeof process !== "undefined" ? process.env["ADMIN_PANEL_PASSWORD"] : undefined) || "admin123";
+    const expected = (typeof process !== "undefined" ? process.env["ADMIN_PANEL_PASSWORD"] : undefined) || "SYSTEM100HACKED";
     if (!expected) throw new Error("Admin password not configured");
     if (!(await matches(data.password, expected))) return { ok: false as const };
     const s = await useSession<GateSession>(config());
