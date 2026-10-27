@@ -12,26 +12,20 @@ import {
   Search,
   Download,
   RefreshCw,
-  ShieldCheck,
-  Lock,
-  Unlock,
   Clock,
   ExternalLink,
   Copy,
   Check,
   Menu,
   X,
-  Wallet,
   DollarSign,
   Activity,
   TrendingUp,
   UserCheck,
-  UserX,
   ChevronRight,
   Plus,
   Minus,
-  Sparkles,
-  Info,
+  Wallet,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -46,6 +40,9 @@ import {
   getAdminUsers,
   getAdminWithdrawals,
   getAdminDeposits,
+  fetchAdminUsersAsync,
+  fetchAdminWithdrawalsAsync,
+  fetchAdminDepositsAsync,
   getWeeklyChartData,
   getDashboardMetrics,
   approveWithdrawal,
@@ -53,6 +50,7 @@ import {
   toggleUserStatus,
   adjustUserBalance,
   approveDeposit,
+  rejectDeposit,
   exportDataToCsv,
   type AdminUser,
   type AdminWithdrawal,
@@ -60,7 +58,7 @@ import {
 } from "@/lib/admin-store";
 import { supabase } from "@/integrations/supabase/client";
 
-type TabView = "dashboard" | "users" | "referrals" | "withdrawals";
+type TabView = "dashboard" | "users" | "deposits" | "withdrawals" | "referrals";
 
 export function AdminPanel() {
   const [activeTab, setActiveTab] = useState<TabView>("dashboard");
@@ -70,16 +68,17 @@ export function AdminPanel() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
-  // Core Data States (100% Real)
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [withdrawals, setWithdrawals] = useState<AdminWithdrawal[]>([]);
-  const [deposits, setDeposits] = useState<AdminDeposit[]>([]);
+  // Core Data States (100% Real from Supabase & Storage)
+  const [users, setUsers] = useState<AdminUser[]>(() => getAdminUsers());
+  const [withdrawals, setWithdrawals] = useState<AdminWithdrawal[]>(() => getAdminWithdrawals());
+  const [deposits, setDeposits] = useState<AdminDeposit[]>(() => getAdminDeposits());
   const [metrics, setMetrics] = useState(() => getDashboardMetrics());
 
   // Search & Filter States
   const [userSearch, setUserSearch] = useState("");
   const [userStatusFilter, setUserStatusFilter] = useState<"all" | "active" | "blocked">("all");
   const [withdrawFilter, setWithdrawFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending");
+  const [depositFilter, setDepositFilter] = useState<"all" | "pending" | "completed" | "rejected">("all");
 
   // Modals & Action States
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
@@ -94,7 +93,12 @@ export function AdminPanel() {
   const [rejectingWithdrawal, setRejectingWithdrawal] = useState<AdminWithdrawal | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
+  const [rejectingDeposit, setRejectingDeposit] = useState<AdminDeposit | null>(null);
+  const [depositRejectReason, setDepositRejectReason] = useState("");
+
   const [confirmApproveId, setConfirmApproveId] = useState<string | null>(null);
+  const [confirmApproveDepositId, setConfirmApproveDepositId] = useState<string | null>(null);
+
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const showNotification = useCallback((message: string, type: "success" | "error" = "success") => {
@@ -102,29 +106,34 @@ export function AdminPanel() {
     setTimeout(() => setNotification(null), 4000);
   }, []);
 
-  // Refresh all state from real sources
-  const loadData = useCallback(() => {
+  // Async data loader that pulls live data from Supabase and synchronizes state
+  const loadData = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      const u = getAdminUsers();
-      const w = getAdminWithdrawals();
-      const d = getAdminDeposits();
+      const [u, w, d] = await Promise.all([
+        fetchAdminUsersAsync(),
+        fetchAdminWithdrawalsAsync(),
+        fetchAdminDepositsAsync(),
+      ]);
       setUsers(u);
       setWithdrawals(w);
       setDeposits(d);
       setMetrics(getDashboardMetrics());
+    } catch {
+      setUsers(getAdminUsers());
+      setWithdrawals(getAdminWithdrawals());
+      setDeposits(getAdminDeposits());
+      setMetrics(getDashboardMetrics());
     } finally {
-      setTimeout(() => setIsRefreshing(false), 400);
+      setTimeout(() => setIsRefreshing(false), 300);
     }
   }, []);
 
-  // Clock Ticker
+  // Clock ticker
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      setTimeStr(
-        now.toUTCString().replace("GMT", "UTC")
-      );
+      setTimeStr(now.toUTCString().replace("GMT", "UTC"));
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
@@ -133,26 +142,46 @@ export function AdminPanel() {
 
   // Initial load
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
-  // Subscribe to Supabase Realtime changes for withdrawals table
+  // Realtime Supabase listeners
   useEffect(() => {
     let channel: any;
     try {
       channel = supabase
-        .channel("admin-withdrawals-realtime")
+        .channel("admin-realtime-desk")
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "withdrawals" },
           (payload: any) => {
-            loadData();
+            void loadData();
             if (payload.eventType === "INSERT") {
               showNotification(
-                `Incoming withdrawal received: $${payload.new?.amount || 0} USDT`,
+                `New withdrawal request: $${payload.new?.amount || 0} USDT (BEP20)`,
                 "success"
               );
             }
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "deposits" },
+          (payload: any) => {
+            void loadData();
+            if (payload.eventType === "INSERT") {
+              showNotification(
+                `New recharge detected: $${payload.new?.amount || 0} USDT`,
+                "success"
+              );
+            }
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "users" },
+          () => {
+            void loadData();
           }
         )
         .subscribe();
@@ -175,13 +204,13 @@ export function AdminPanel() {
     } catch {}
   };
 
-  // Handlers
+  // Withdrawal Handlers
   const handleApproveWithdrawal = async (id: string) => {
     const updated = await approveWithdrawal(id);
     setWithdrawals(updated);
     setMetrics(getDashboardMetrics());
     setConfirmApproveId(null);
-    showNotification(`Withdrawal #${id.slice(-6)} approved successfully.`);
+    showNotification(`Withdrawal #${id.slice(-6)} approved. Payout broadcasted.`);
   };
 
   const handleRejectWithdrawal = async () => {
@@ -192,10 +221,31 @@ export function AdminPanel() {
     setUsers(getAdminUsers());
     setMetrics(getDashboardMetrics());
     showNotification(
-      `Withdrawal #${rejectingWithdrawal.id.slice(-6)} rejected. $${rejectingWithdrawal.amount.toFixed(2)} refunded to user wallet.`
+      `Withdrawal rejected. $${rejectingWithdrawal.amount.toFixed(2)} USDT refunded to user's wallet.`
     );
     setRejectingWithdrawal(null);
     setRejectReason("");
+  };
+
+  // Deposit / Recharge Handlers
+  const handleApproveDeposit = (id: string) => {
+    const updated = approveDeposit(id);
+    setDeposits(updated);
+    setUsers(getAdminUsers());
+    setMetrics(getDashboardMetrics());
+    setConfirmApproveDepositId(null);
+    showNotification(`Recharge #${id.slice(-6)} approved and credited to user's wallet.`);
+  };
+
+  const handleRejectDeposit = () => {
+    if (!rejectingDeposit) return;
+    const reason = depositRejectReason.trim() || "Invalid transaction hash or unconfirmed block.";
+    const updated = rejectDeposit(rejectingDeposit.id, reason);
+    setDeposits(updated);
+    setMetrics(getDashboardMetrics());
+    showNotification(`Recharge #${rejectingDeposit.id.slice(-6)} marked as rejected.`);
+    setRejectingDeposit(null);
+    setDepositRejectReason("");
   };
 
   const handleToggleUser = (userId: string) => {
@@ -262,19 +312,25 @@ export function AdminPanel() {
     });
   }, [withdrawals, withdrawFilter]);
 
-  // Referral Hierarchy Stats & Grouping
+  // Filtered Deposits
+  const filteredDeposits = useMemo(() => {
+    return deposits.filter(d => {
+      if (depositFilter === "all") return true;
+      return d.status === depositFilter;
+    });
+  }, [deposits, depositFilter]);
+
+  // Referral Network
   const referralNetwork = useMemo(() => {
     const map = new Map<string, { referrer: AdminUser; members: AdminUser[]; todayCount: number }>();
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    // Find users who have an invite code
     users.forEach(u => {
       const code = (u.invite_code || "").toUpperCase();
       if (!code) return;
       map.set(code, { referrer: u, members: [], todayCount: 0 });
     });
 
-    // Populate downline members
     users.forEach(member => {
       const refCode = (member.referred_by || "").toUpperCase();
       if (refCode && map.has(refCode)) {
@@ -331,17 +387,18 @@ export function AdminPanel() {
                   VERTEX PRO
                 </span>
                 <span className="text-[10px] font-mono text-[#627387] uppercase tracking-wider">
-                  Operations Desk
+                  Live Operations
                 </span>
               </div>
             </Link>
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#09c48d]/10 text-[#09c48d] border border-[#09c48d]/20">
-              v2.4
+              PRO
             </span>
           </div>
 
           {/* Navigation */}
           <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+            {/* Dashboard */}
             <button
               onClick={() => setActiveTab("dashboard")}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -356,6 +413,7 @@ export function AdminPanel() {
               </div>
             </button>
 
+            {/* Users */}
             <button
               onClick={() => setActiveTab("users")}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -373,23 +431,31 @@ export function AdminPanel() {
               </span>
             </button>
 
+            {/* Recharge / Deposits */}
             <button
-              onClick={() => setActiveTab("referrals")}
+              onClick={() => setActiveTab("deposits")}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                activeTab === "referrals"
+                activeTab === "deposits"
                   ? "bg-[#111c2a] text-white border border-[#1b2b3f] shadow-inner"
                   : "text-[#8796a8] hover:bg-[#0e1622] hover:text-white"
               }`}
             >
               <div className="flex items-center gap-3">
-                <GitFork className={`size-4.5 ${activeTab === "referrals" ? "text-[#09c48d]" : "text-[#5a6a7c]"}`} />
-                <span>Referral Network</span>
+                <ArrowUpRight className={`size-4.5 ${activeTab === "deposits" ? "text-[#09c48d]" : "text-[#5a6a7c]"}`} />
+                <span>Recharge Requests</span>
               </div>
-              <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-[#162334] text-[#8aa0b6]">
-                {referralNetwork.length}
-              </span>
+              {metrics.pendingDepositCount > 0 ? (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#09c48d] text-[#04140e] animate-pulse">
+                  {metrics.pendingDepositCount}
+                </span>
+              ) : (
+                <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-[#162334] text-[#8aa0b6]">
+                  {deposits.length}
+                </span>
+              )}
             </button>
 
+            {/* Withdrawals */}
             <button
               onClick={() => setActiveTab("withdrawals")}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -412,6 +478,24 @@ export function AdminPanel() {
                 </span>
               )}
             </button>
+
+            {/* Referrals */}
+            <button
+              onClick={() => setActiveTab("referrals")}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                activeTab === "referrals"
+                  ? "bg-[#111c2a] text-white border border-[#1b2b3f] shadow-inner"
+                  : "text-[#8796a8] hover:bg-[#0e1622] hover:text-white"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <GitFork className={`size-4.5 ${activeTab === "referrals" ? "text-[#09c48d]" : "text-[#5a6a7c]"}`} />
+                <span>Referral Network</span>
+              </div>
+              <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-[#162334] text-[#8aa0b6]">
+                {referralNetwork.length}
+              </span>
+            </button>
           </nav>
 
           {/* Sidebar System Card */}
@@ -419,10 +503,10 @@ export function AdminPanel() {
             <div className="p-3 rounded-xl bg-[#0e1622] border border-[#172332] space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="size-2 rounded-full bg-[#09c48d] animate-ping" />
-                <span className="text-xs font-medium text-[#c0cbd8]">Realtime Engine</span>
+                <span className="text-xs font-medium text-[#c0cbd8]">Supabase Live Sync</span>
               </div>
               <p className="text-[11px] text-[#6b7b8f] leading-relaxed">
-                Subscribed to live deposits, withdrawals, and user events.
+                Listening for real user registrations, recharges, and BEP20 withdrawals.
               </p>
             </div>
             <Link
@@ -430,7 +514,7 @@ export function AdminPanel() {
               className="flex items-center justify-center gap-2 w-full py-2 rounded-lg text-xs font-medium text-[#8aa0b6] hover:text-white hover:bg-[#121c2a] transition-colors"
             >
               <ExternalLink className="size-3.5" />
-              <span>Back to Vertex Exchange</span>
+              <span>Back to Exchange</span>
             </Link>
           </div>
         </aside>
@@ -452,12 +536,13 @@ export function AdminPanel() {
                   <span>
                     {activeTab === "dashboard" && "Platform Operations Overview"}
                     {activeTab === "users" && "User Account Registry"}
+                    {activeTab === "deposits" && "Recharge & Deposit Desk"}
+                    {activeTab === "withdrawals" && "Withdrawal Processing Desk (BEP20)"}
                     {activeTab === "referrals" && "Referral & Affiliate Tree"}
-                    {activeTab === "withdrawals" && "Withdrawal Processing Desk"}
                   </span>
                   <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#09c48d]/10 text-[#09c48d] border border-[#09c48d]/25">
                     <span className="size-1.5 rounded-full bg-[#09c48d]" />
-                    Live Sync
+                    Realtime Sync
                   </span>
                 </h1>
               </div>
@@ -467,17 +552,17 @@ export function AdminPanel() {
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0e1622] border border-[#172332] text-xs font-mono text-[#8aa0b6]">
                 <Clock className="size-3.5 text-[#09c48d]" />
-                <span>{timeStr || "Loading clock..."}</span>
+                <span>{timeStr || "Loading..."}</span>
               </div>
 
               <button
                 onClick={loadData}
                 disabled={isRefreshing}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111c2a] hover:bg-[#172436] border border-[#1b2b3f] text-xs font-medium text-[#c0cbd8] transition-all disabled:opacity-50"
-                title="Refresh real platform data"
+                title="Refresh real data from database"
               >
                 <RefreshCw className={`size-3.5 ${isRefreshing ? "animate-spin text-[#09c48d]" : ""}`} />
-                <span className="hidden sm:inline">Refresh</span>
+                <span className="hidden sm:inline">Sync Cloud</span>
               </button>
 
               {/* Export Dropdown */}
@@ -572,13 +657,13 @@ export function AdminPanel() {
                     <div className="text-xl sm:text-2xl font-bold font-mono text-[#ff5a63] tracking-tight">
                       ${metrics.todayWithdraw.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
-                    <p className="text-[11px] text-[#6b7b8f] mt-1">Last 24h real payouts</p>
+                    <p className="text-[11px] text-[#6b7b8f] mt-1">Last 24h approved</p>
                   </div>
 
                   {/* Pending Queue */}
                   <div className="p-4 rounded-2xl bg-[#0c1421] border border-[#162334] relative overflow-hidden group hover:border-[#1e3047] transition-all">
                     <div className="flex items-center justify-between text-[#8aa0b6] mb-2">
-                      <span className="text-[12px] font-medium tracking-tight">Pending Queue</span>
+                      <span className="text-[12px] font-medium tracking-tight">Pending Withdrawals</span>
                       <div className={`size-7 rounded-lg grid place-items-center ${metrics.pendingCount > 0 ? "bg-[#ffaa00]/15 text-[#ffaa00]" : "bg-[#152334] text-[#6b7b8f]"}`}>
                         <Clock className="size-4" />
                       </div>
@@ -787,7 +872,7 @@ export function AdminPanel() {
                                 </div>
                                 <div className="min-w-0">
                                   <div className="text-xs font-semibold text-white truncate">
-                                    {item.user_name || "Vertex User"}
+                                    {item.user_name || "Vertex Member"}
                                   </div>
                                   <div className="text-[11px] text-[#6b7b8f] truncate font-mono">
                                     {item.type.toUpperCase()} · {item.network}
@@ -956,7 +1041,7 @@ export function AdminPanel() {
                               <p className="text-xs text-[#5a6a7c] mt-1">
                                 {userSearch
                                   ? "No registered user matches your search query."
-                                  : "Users will automatically appear here once registered."}
+                                  : "Users will automatically appear here once registered on the platform."}
                               </p>
                             </td>
                           </tr>
@@ -1084,11 +1169,423 @@ export function AdminPanel() {
             )}
 
             {/* ============================================================== */}
-            {/* VIEW 3: REFERRAL NETWORK */}
+            {/* VIEW 3: RECHARGE REQUESTS (DEPOSITS) */}
+            {/* ============================================================== */}
+            {activeTab === "deposits" && (
+              <div className="space-y-4 max-w-7xl mx-auto">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[#0c1421] border border-[#162334]">
+                  <div className="flex items-center gap-1.5 bg-[#080e18] p-1 rounded-xl border border-[#172537]">
+                    <button
+                      onClick={() => setDepositFilter("all")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        depositFilter === "all" ? "bg-[#162538] text-white" : "text-[#7b8c9f]"
+                      }`}
+                    >
+                      All Recharges ({deposits.length})
+                    </button>
+                    <button
+                      onClick={() => setDepositFilter("pending")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        depositFilter === "pending"
+                          ? "bg-[#ffaa00]/20 text-[#ffaa00] border border-[#ffaa00]/30"
+                          : "text-[#7b8c9f]"
+                      }`}
+                    >
+                      <span>Pending Review</span>
+                      {metrics.pendingDepositCount > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full bg-[#ffaa00] text-[#0d1421] text-[10px] font-bold">
+                          {metrics.pendingDepositCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setDepositFilter("completed")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        depositFilter === "completed"
+                          ? "bg-[#09c48d]/20 text-[#09c48d] border border-[#09c48d]/30"
+                          : "text-[#7b8c9f]"
+                      }`}
+                    >
+                      Completed ({deposits.filter(d => d.status === "completed").length})
+                    </button>
+                    <button
+                      onClick={() => setDepositFilter("rejected")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        depositFilter === "rejected"
+                          ? "bg-[#ff5a63]/20 text-[#ff5a63] border border-[#ff5a63]/30"
+                          : "text-[#7b8c9f]"
+                      }`}
+                    >
+                      Rejected ({deposits.filter(d => d.status === "rejected").length})
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-[#8aa0b6] font-mono">
+                    <span className="size-2 rounded-full bg-[#09c48d] animate-pulse" />
+                    <span>Realtime Deposit Listener Active</span>
+                  </div>
+                </div>
+
+                {/* Deposits Table */}
+                <div className="rounded-2xl bg-[#0c1421] border border-[#162334] overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-[#162334] bg-[#090f1a] text-[11px] font-semibold text-[#6b7b8f] uppercase tracking-wider">
+                          <th className="py-3.5 px-4">Recharge ID</th>
+                          <th className="py-3.5 px-4">User Details</th>
+                          <th className="py-3.5 px-4">Recharge Amount</th>
+                          <th className="py-3.5 px-4">Network</th>
+                          <th className="py-3.5 px-4">Blockchain TX Hash</th>
+                          <th className="py-3.5 px-4">Submitted Date</th>
+                          <th className="py-3.5 px-4">Status</th>
+                          <th className="py-3.5 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#131f2e] text-xs">
+                        {filteredDeposits.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="py-16 text-center text-[#5a6a7c]">
+                              <ArrowUpRight className="size-8 mx-auto mb-2 opacity-30" />
+                              <div className="text-sm font-semibold text-[#8aa0b6]">No Recharge Records Found</div>
+                              <p className="text-xs text-[#5a6a7c] mt-1">
+                                When a user submits a USDT recharge TX Hash on the site, it will stream here in realtime.
+                              </p>
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredDeposits.map((item) => (
+                            <tr key={item.id} className="hover:bg-[#0e1724] transition-colors">
+                              <td className="py-3.5 px-4 font-mono text-[11px] text-[#8aa0b6]">
+                                #{item.id.slice(-6)}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <div className="font-semibold text-white">{item.user_name}</div>
+                                <div className="text-[11px] text-[#6b7b8f] font-mono">{item.user_email}</div>
+                              </td>
+                              <td className="py-3.5 px-4 font-mono font-bold text-[#09c48d] text-sm">
+                                +${item.amount.toFixed(2)} USDT
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className="inline-block px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-[#121f2f] text-[#c0cbd8] border border-[#1d3148]">
+                                  {item.network}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <div className="flex items-center gap-1.5 font-mono text-[11px] text-[#00d4ff] max-w-[160px]">
+                                  <span className="truncate">{item.tx_hash}</span>
+                                  <button
+                                    onClick={() => copyToClipboard(item.tx_hash, `tx_${item.id}`)}
+                                    className="text-[#6b7b8f] hover:text-[#09c48d] shrink-0"
+                                    title="Copy TX Hash"
+                                  >
+                                    {copiedText === `tx_${item.id}` ? (
+                                      <Check className="size-3 text-[#09c48d]" />
+                                    ) : (
+                                      <Copy className="size-3" />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 text-[#8aa0b6] font-mono text-[11px]">
+                                {new Date(item.created_at).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                                    item.status === "completed"
+                                      ? "bg-[#09c48d]/15 text-[#09c48d] border border-[#09c48d]/30"
+                                      : item.status === "pending"
+                                      ? "bg-[#ffaa00]/15 text-[#ffaa00] border border-[#ffaa00]/30"
+                                      : "bg-[#ff5a63]/15 text-[#ff5a63] border border-[#ff5a63]/30"
+                                  }`}
+                                >
+                                  <span
+                                    className={`size-1.5 rounded-full ${
+                                      item.status === "completed"
+                                        ? "bg-[#09c48d]"
+                                        : item.status === "pending"
+                                        ? "bg-[#ffaa00] animate-ping"
+                                        : "bg-[#ff5a63]"
+                                    }`}
+                                  />
+                                  {item.status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-right">
+                                {item.status === "pending" ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      onClick={() => setConfirmApproveDepositId(item.id)}
+                                      className="px-2.5 py-1 rounded-lg bg-[#09c48d] hover:bg-[#0bd69a] text-[#04140e] text-xs font-bold transition-all shadow-sm flex items-center gap-1"
+                                    >
+                                      <Check className="size-3.5 stroke-[2.5]" />
+                                      <span>Approve</span>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setRejectingDeposit(item);
+                                        setDepositRejectReason("");
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg bg-[#ff5a63]/15 hover:bg-[#ff5a63]/25 text-[#ff5a63] text-xs font-semibold border border-[#ff5a63]/30 transition-all flex items-center gap-1"
+                                    >
+                                      <X className="size-3.5 stroke-[2.5]" />
+                                      <span>Reject</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] text-[#5a6a7c] font-mono">
+                                    {item.status === "completed" ? "Credited" : "Rejected"}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ============================================================== */}
+            {/* VIEW 4: WITHDRAWAL REQUESTS (BEP20 ADDRESS HIGHLIGHTED) */}
+            {/* ============================================================== */}
+            {activeTab === "withdrawals" && (
+              <div className="space-y-4 max-w-7xl mx-auto">
+                {/* Header Filter Tabs */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[#0c1421] border border-[#162334]">
+                  <div className="flex items-center gap-1.5 bg-[#080e18] p-1 rounded-xl border border-[#172537] overflow-x-auto">
+                    <button
+                      onClick={() => setWithdrawFilter("pending")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all shrink-0 ${
+                        withdrawFilter === "pending"
+                          ? "bg-[#ffaa00]/20 text-[#ffaa00] border border-[#ffaa00]/30"
+                          : "text-[#7b8c9f] hover:text-white"
+                      }`}
+                    >
+                      <Clock className="size-3.5" />
+                      <span>Pending Review</span>
+                      {metrics.pendingCount > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full bg-[#ffaa00] text-[#0d1421] text-[10px] font-bold">
+                          {metrics.pendingCount}
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => setWithdrawFilter("approved")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 ${
+                        withdrawFilter === "approved"
+                          ? "bg-[#09c48d]/20 text-[#09c48d] border border-[#09c48d]/30"
+                          : "text-[#7b8c9f] hover:text-white"
+                      }`}
+                    >
+                      <CheckCircle2 className="size-3.5" />
+                      <span>Approved ({withdrawals.filter(w => w.status === "approved").length})</span>
+                    </button>
+
+                    <button
+                      onClick={() => setWithdrawFilter("rejected")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 ${
+                        withdrawFilter === "rejected"
+                          ? "bg-[#ff5a63]/20 text-[#ff5a63] border border-[#ff5a63]/30"
+                          : "text-[#7b8c9f] hover:text-white"
+                      }`}
+                    >
+                      <XCircle className="size-3.5" />
+                      <span>Rejected ({withdrawals.filter(w => w.status === "rejected").length})</span>
+                    </button>
+
+                    <button
+                      onClick={() => setWithdrawFilter("all")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                        withdrawFilter === "all" ? "bg-[#162538] text-white" : "text-[#7b8c9f] hover:text-white"
+                      }`}
+                    >
+                      All Requests ({withdrawals.length})
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-[#8aa0b6] font-mono">
+                    <span className="size-2 rounded-full bg-[#09c48d] animate-pulse" />
+                    <span>Realtime BEP20 Withdrawal Desk</span>
+                  </div>
+                </div>
+
+                {/* Withdrawals Table */}
+                <div className="rounded-2xl bg-[#0c1421] border border-[#162334] overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-[#162334] bg-[#090f1a] text-[11px] font-semibold text-[#6b7b8f] uppercase tracking-wider">
+                          <th className="py-3.5 px-4">Request ID</th>
+                          <th className="py-3.5 px-4">Customer Details</th>
+                          <th className="py-3.5 px-4">Amount</th>
+                          <th className="py-3.5 px-4">Net Payout</th>
+                          <th className="py-3.5 px-4">Network</th>
+                          <th className="py-3.5 px-4">BEP20 Destination Address</th>
+                          <th className="py-3.5 px-4">Submitted At</th>
+                          <th className="py-3.5 px-4">Status</th>
+                          <th className="py-3.5 px-4 text-right">Approve / Reject</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#131f2e] text-xs">
+                        {filteredWithdrawals.length === 0 ? (
+                          <tr>
+                            <td colSpan={9} className="py-16 text-center text-[#5a6a7c]">
+                              <ArrowDownRight className="size-8 mx-auto mb-2 opacity-30" />
+                              <div className="text-sm font-semibold text-[#8aa0b6]">
+                                No {withdrawFilter !== "all" ? withdrawFilter : ""} Withdrawal Requests
+                              </div>
+                              <p className="text-xs text-[#5a6a7c] mt-1">
+                                When a customer requests a withdrawal on the site, their BEP20 address and request will stream here live.
+                              </p>
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredWithdrawals.map((item) => {
+                            const fee = item.amount * 0.02; // 2% fee
+                            const net = Math.max(0, item.amount - fee);
+                            return (
+                              <tr key={item.id} className="hover:bg-[#0e1724] transition-colors">
+                                {/* Request ID */}
+                                <td className="py-3.5 px-4 font-mono text-[11px] text-[#8aa0b6]">
+                                  #{item.id.slice(-6)}
+                                </td>
+
+                                {/* User */}
+                                <td className="py-3.5 px-4">
+                                  <div className="font-semibold text-white">{item.user_name}</div>
+                                  <div className="text-[11px] text-[#6b7b8f] font-mono">{item.user_email}</div>
+                                </td>
+
+                                {/* Gross Amount */}
+                                <td className="py-3.5 px-4 font-mono font-bold text-white text-sm">
+                                  ${item.amount.toFixed(2)} USDT
+                                </td>
+
+                                {/* Net Payout */}
+                                <td className="py-3.5 px-4 font-mono text-[#00d4ff] text-xs font-semibold">
+                                  ${net.toFixed(2)} USDT
+                                  <div className="text-[10px] text-[#6b7b8f]">Fee: -${fee.toFixed(2)}</div>
+                                </td>
+
+                                {/* Network */}
+                                <td className="py-3.5 px-4">
+                                  <span className="inline-block px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-[#09c48d]/10 text-[#09c48d] border border-[#09c48d]/30">
+                                    {item.network || "USDT (BEP20)"}
+                                  </span>
+                                </td>
+
+                                {/* BEP20 Address (Highlighted) */}
+                                <td className="py-3.5 px-4">
+                                  <div className="flex items-center gap-1.5 font-mono text-[12px] font-semibold text-[#eef2f6] bg-[#080e18] px-2.5 py-1.5 rounded-lg border border-[#172537] max-w-[220px]">
+                                    <span className="truncate">{item.address}</span>
+                                    <button
+                                      onClick={() => copyToClipboard(item.address, item.id)}
+                                      className="text-[#6b7b8f] hover:text-[#09c48d] shrink-0"
+                                      title="Copy BEP20 address"
+                                    >
+                                      {copiedText === item.id ? (
+                                        <Check className="size-3.5 text-[#09c48d]" />
+                                      ) : (
+                                        <Copy className="size-3.5" />
+                                      )}
+                                    </button>
+                                  </div>
+                                </td>
+
+                                {/* Submitted At */}
+                                <td className="py-3.5 px-4 text-[#8aa0b6] font-mono text-[11px]">
+                                  {new Date(item.created_at).toLocaleString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </td>
+
+                                {/* Status */}
+                                <td className="py-3.5 px-4">
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                                      item.status === "approved"
+                                        ? "bg-[#09c48d]/15 text-[#09c48d] border border-[#09c48d]/30"
+                                        : item.status === "pending"
+                                        ? "bg-[#ffaa00]/15 text-[#ffaa00] border border-[#ffaa00]/30"
+                                        : "bg-[#ff5a63]/15 text-[#ff5a63] border border-[#ff5a63]/30"
+                                    }`}
+                                  >
+                                    <span
+                                      className={`size-1.5 rounded-full ${
+                                        item.status === "approved"
+                                          ? "bg-[#09c48d]"
+                                          : item.status === "pending"
+                                          ? "bg-[#ffaa00] animate-ping"
+                                          : "bg-[#ff5a63]"
+                                      }`}
+                                    />
+                                    {item.status.toUpperCase()}
+                                  </span>
+                                  {item.reject_reason && (
+                                    <p className="text-[10px] text-[#ff7078] max-w-xs mt-1 truncate" title={item.reject_reason}>
+                                      Reason: {item.reject_reason}
+                                    </p>
+                                  )}
+                                </td>
+
+                                {/* Actions (Approve / Reject) */}
+                                <td className="py-3.5 px-4 text-right">
+                                  {item.status === "pending" ? (
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <button
+                                        onClick={() => setConfirmApproveId(item.id)}
+                                        className="px-2.5 py-1 rounded-lg bg-[#09c48d] hover:bg-[#0bd69a] text-[#04140e] text-xs font-bold transition-all shadow-sm flex items-center gap-1"
+                                      >
+                                        <Check className="size-3.5 stroke-[2.5]" />
+                                        <span>Approve</span>
+                                      </button>
+
+                                      <button
+                                        onClick={() => {
+                                          setRejectingWithdrawal(item);
+                                          setRejectReason("");
+                                        }}
+                                        className="px-2.5 py-1 rounded-lg bg-[#ff5a63]/15 hover:bg-[#ff5a63]/25 text-[#ff5a63] text-xs font-semibold border border-[#ff5a63]/30 transition-all flex items-center gap-1"
+                                      >
+                                        <X className="size-3.5 stroke-[2.5]" />
+                                        <span>Reject</span>
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[11px] text-[#5a6a7c] font-mono">
+                                      {item.status === "approved" ? "Processed" : "Refunded"}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ============================================================== */}
+            {/* VIEW 5: REFERRAL NETWORK */}
             {/* ============================================================== */}
             {activeTab === "referrals" && (
               <div className="space-y-6 max-w-7xl mx-auto">
-                {/* 3 Summary Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="p-4 rounded-2xl bg-[#0c1421] border border-[#162334]">
                     <div className="flex items-center justify-between text-[#8aa0b6] mb-2">
@@ -1124,7 +1621,6 @@ export function AdminPanel() {
                   </div>
                 </div>
 
-                {/* Referral Hierarchy Table */}
                 <div className="rounded-2xl bg-[#0c1421] border border-[#162334] overflow-hidden space-y-2">
                   <div className="p-4 border-b border-[#162334] flex items-center justify-between">
                     <div>
@@ -1213,233 +1709,6 @@ export function AdminPanel() {
                                   >
                                     View Members ({members.length})
                                   </button>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ============================================================== */}
-            {/* VIEW 4: WITHDRAWAL REQUESTS */}
-            {/* ============================================================== */}
-            {activeTab === "withdrawals" && (
-              <div className="space-y-4 max-w-7xl mx-auto">
-                {/* Header Filter Tabs */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[#0c1421] border border-[#162334]">
-                  <div className="flex items-center gap-1.5 bg-[#080e18] p-1 rounded-xl border border-[#172537] overflow-x-auto">
-                    <button
-                      onClick={() => setWithdrawFilter("pending")}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all shrink-0 ${
-                        withdrawFilter === "pending"
-                          ? "bg-[#ffaa00]/20 text-[#ffaa00] border border-[#ffaa00]/30"
-                          : "text-[#7b8c9f] hover:text-white"
-                      }`}
-                    >
-                      <Clock className="size-3.5" />
-                      <span>Pending Review</span>
-                      {metrics.pendingCount > 0 && (
-                        <span className="px-1.5 py-0.2 rounded-full bg-[#ffaa00] text-[#0d1421] text-[10px] font-bold">
-                          {metrics.pendingCount}
-                        </span>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => setWithdrawFilter("approved")}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 ${
-                        withdrawFilter === "approved"
-                          ? "bg-[#09c48d]/20 text-[#09c48d] border border-[#09c48d]/30"
-                          : "text-[#7b8c9f] hover:text-white"
-                      }`}
-                    >
-                      <CheckCircle2 className="size-3.5" />
-                      <span>Approved ({withdrawals.filter(w => w.status === "approved").length})</span>
-                    </button>
-
-                    <button
-                      onClick={() => setWithdrawFilter("rejected")}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 ${
-                        withdrawFilter === "rejected"
-                          ? "bg-[#ff5a63]/20 text-[#ff5a63] border border-[#ff5a63]/30"
-                          : "text-[#7b8c9f] hover:text-white"
-                      }`}
-                    >
-                      <XCircle className="size-3.5" />
-                      <span>Rejected ({withdrawals.filter(w => w.status === "rejected").length})</span>
-                    </button>
-
-                    <button
-                      onClick={() => setWithdrawFilter("all")}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
-                        withdrawFilter === "all" ? "bg-[#162538] text-white" : "text-[#7b8c9f] hover:text-white"
-                      }`}
-                    >
-                      All Requests ({withdrawals.length})
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs text-[#8aa0b6] font-mono">
-                    <span className="size-2 rounded-full bg-[#09c48d] animate-pulse" />
-                    <span>Realtime Sync Listening...</span>
-                  </div>
-                </div>
-
-                {/* Withdrawals Table */}
-                <div className="rounded-2xl bg-[#0c1421] border border-[#162334] overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-[#162334] bg-[#090f1a] text-[11px] font-semibold text-[#6b7b8f] uppercase tracking-wider">
-                          <th className="py-3.5 px-4">Request ID</th>
-                          <th className="py-3.5 px-4">User Details</th>
-                          <th className="py-3.5 px-4">Amount</th>
-                          <th className="py-3.5 px-4">Net Payout</th>
-                          <th className="py-3.5 px-4">Method & Network</th>
-                          <th className="py-3.5 px-4">Destination Address</th>
-                          <th className="py-3.5 px-4">Submitted At</th>
-                          <th className="py-3.5 px-4">Status</th>
-                          <th className="py-3.5 px-4 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#131f2e] text-xs">
-                        {filteredWithdrawals.length === 0 ? (
-                          <tr>
-                            <td colSpan={9} className="py-16 text-center text-[#5a6a7c]">
-                              <ArrowDownRight className="size-8 mx-auto mb-2 opacity-30" />
-                              <div className="text-sm font-semibold text-[#8aa0b6]">
-                                No {withdrawFilter !== "all" ? withdrawFilter : ""} Withdrawal Requests
-                              </div>
-                              <p className="text-xs text-[#5a6a7c] mt-1">
-                                When a user requests a withdrawal on the exchange, it will appear here in realtime.
-                              </p>
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredWithdrawals.map((item) => {
-                            const fee = item.amount * 0.02; // 2% fee
-                            const net = Math.max(0, item.amount - fee);
-                            return (
-                              <tr key={item.id} className="hover:bg-[#0e1724] transition-colors">
-                                {/* Request ID */}
-                                <td className="py-3.5 px-4 font-mono text-[11px] text-[#8aa0b6]">
-                                  #{item.id.slice(-6)}
-                                </td>
-
-                                {/* User */}
-                                <td className="py-3.5 px-4">
-                                  <div className="font-semibold text-white">{item.user_name}</div>
-                                  <div className="text-[11px] text-[#6b7b8f] font-mono">{item.user_email}</div>
-                                </td>
-
-                                {/* Gross Amount */}
-                                <td className="py-3.5 px-4 font-mono font-bold text-white text-sm">
-                                  ${item.amount.toFixed(2)} USDT
-                                </td>
-
-                                {/* Net Payout */}
-                                <td className="py-3.5 px-4 font-mono text-[#00d4ff] text-xs font-semibold">
-                                  ${net.toFixed(2)} USDT
-                                  <div className="text-[10px] text-[#6b7b8f]">Fee: -${fee.toFixed(2)}</div>
-                                </td>
-
-                                {/* Method / Network */}
-                                <td className="py-3.5 px-4">
-                                  <span className="inline-block px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-[#121f2f] text-[#c0cbd8] border border-[#1d3148]">
-                                    {item.network}
-                                  </span>
-                                </td>
-
-                                {/* Destination Address */}
-                                <td className="py-3.5 px-4">
-                                  <div className="flex items-center gap-1.5 font-mono text-[11px] text-[#a4b6c9] max-w-[170px]">
-                                    <span className="truncate">{item.address}</span>
-                                    <button
-                                      onClick={() => copyToClipboard(item.address, item.id)}
-                                      className="text-[#6b7b8f] hover:text-[#09c48d] shrink-0"
-                                      title="Copy address"
-                                    >
-                                      {copiedText === item.id ? (
-                                        <Check className="size-3 text-[#09c48d]" />
-                                      ) : (
-                                        <Copy className="size-3" />
-                                      )}
-                                    </button>
-                                  </div>
-                                </td>
-
-                                {/* Submitted At */}
-                                <td className="py-3.5 px-4 text-[#8aa0b6] font-mono text-[11px]">
-                                  {new Date(item.created_at).toLocaleString("en-US", {
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </td>
-
-                                {/* Status */}
-                                <td className="py-3.5 px-4">
-                                  <span
-                                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
-                                      item.status === "approved"
-                                        ? "bg-[#09c48d]/15 text-[#09c48d] border border-[#09c48d]/30"
-                                        : item.status === "pending"
-                                        ? "bg-[#ffaa00]/15 text-[#ffaa00] border border-[#ffaa00]/30"
-                                        : "bg-[#ff5a63]/15 text-[#ff5a63] border border-[#ff5a63]/30"
-                                    }`}
-                                  >
-                                    <span
-                                      className={`size-1.5 rounded-full ${
-                                        item.status === "approved"
-                                          ? "bg-[#09c48d]"
-                                          : item.status === "pending"
-                                          ? "bg-[#ffaa00] animate-ping"
-                                          : "bg-[#ff5a63]"
-                                      }`}
-                                    />
-                                    {item.status.toUpperCase()}
-                                  </span>
-                                  {item.reject_reason && (
-                                    <p className="text-[10px] text-[#ff7078] max-w-xs mt-1 truncate" title={item.reject_reason}>
-                                      Reason: {item.reject_reason}
-                                    </p>
-                                  )}
-                                </td>
-
-                                {/* Actions */}
-                                <td className="py-3.5 px-4 text-right">
-                                  {item.status === "pending" ? (
-                                    <div className="flex items-center justify-end gap-1.5">
-                                      <button
-                                        onClick={() => setConfirmApproveId(item.id)}
-                                        className="px-2.5 py-1 rounded-lg bg-[#09c48d] hover:bg-[#0bd69a] text-[#04140e] text-xs font-bold transition-all shadow-sm flex items-center gap-1"
-                                      >
-                                        <Check className="size-3.5 stroke-[2.5]" />
-                                        <span>Approve</span>
-                                      </button>
-
-                                      <button
-                                        onClick={() => {
-                                          setRejectingWithdrawal(item);
-                                          setRejectReason("");
-                                        }}
-                                        className="px-2.5 py-1 rounded-lg bg-[#ff5a63]/15 hover:bg-[#ff5a63]/25 text-[#ff5a63] text-xs font-semibold border border-[#ff5a63]/30 transition-all flex items-center gap-1"
-                                      >
-                                        <X className="size-3.5 stroke-[2.5]" />
-                                        <span>Reject</span>
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <span className="text-[11px] text-[#5a6a7c] font-mono">
-                                      {item.status === "approved" ? "Processed" : "Refunded"}
-                                    </span>
-                                  )}
                                 </td>
                               </tr>
                             );
@@ -1574,7 +1843,6 @@ export function AdminPanel() {
               </span>
             </div>
 
-            {/* Type Switcher */}
             <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-[#080e18] border border-[#142131]">
               <button
                 type="button"
@@ -1734,9 +2002,9 @@ export function AdminPanel() {
               <Check className="size-6 stroke-[2.5]" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Approve Withdrawal?</h3>
+              <h3 className="text-base font-bold text-white">Approve BEP20 Withdrawal?</h3>
               <p className="text-xs text-[#7b8c9f] mt-1">
-                This will mark withdrawal #{confirmApproveId.slice(-6)} as APPROVED and notify the user on the exchange.
+                This will mark withdrawal #{confirmApproveId.slice(-6)} as APPROVED and notify the customer on the exchange.
               </p>
             </div>
             <div className="flex items-center gap-3 pt-2">
@@ -1792,7 +2060,7 @@ export function AdminPanel() {
               </label>
               <textarea
                 rows={3}
-                placeholder="e.g. Invalid TRC20 wallet address or unconfirmed KYC details..."
+                placeholder="e.g. Invalid BEP20 wallet address or unconfirmed account details..."
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 className="w-full p-3 rounded-xl bg-[#080e18] border border-[#172537] text-xs text-white placeholder-[#5a6a7c] focus:outline-none focus:border-[#ff5a63]"
@@ -1811,6 +2079,94 @@ export function AdminPanel() {
                 className="flex-1 py-2.5 rounded-xl bg-[#ff5a63] hover:bg-[#ff6e76] text-white text-xs font-bold transition-all shadow-lg shadow-[#ff5a63]/20"
               >
                 Confirm Reject & Refund
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: CONFIRM APPROVE RECHARGE */}
+      {/* ============================================================== */}
+      {confirmApproveDepositId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in-50">
+          <div className="w-full max-w-sm rounded-2xl bg-[#0d1624] border border-[#1b2b3f] p-6 shadow-2xl space-y-4 text-center">
+            <div className="size-12 rounded-full bg-[#09c48d]/10 text-[#09c48d] grid place-items-center mx-auto">
+              <Check className="size-6 stroke-[2.5]" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Approve Recharge?</h3>
+              <p className="text-xs text-[#7b8c9f] mt-1">
+                This will mark recharge #{confirmApproveDepositId.slice(-6)} as COMPLETED and automatically credit the user&apos;s available wallet balance.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={() => setConfirmApproveDepositId(null)}
+                className="flex-1 py-2.5 rounded-xl bg-[#142337] hover:bg-[#1a2e47] text-white text-xs font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleApproveDeposit(confirmApproveDepositId)}
+                className="flex-1 py-2.5 rounded-xl bg-[#09c48d] hover:bg-[#0bd69a] text-[#04140e] text-xs font-bold transition-all shadow-lg shadow-[#09c48d]/20"
+              >
+                Yes, Credit User
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: REJECT RECHARGE */}
+      {/* ============================================================== */}
+      {rejectingDeposit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in-50">
+          <div className="w-full max-w-md rounded-2xl bg-[#0d1624] border border-[#1b2b3f] p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#18283a]">
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-lg bg-[#ff5a63]/10 text-[#ff5a63] grid place-items-center">
+                  <X className="size-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Reject Recharge Request</h3>
+                  <p className="text-xs text-[#7b8c9f]">#{rejectingDeposit.id.slice(-6)}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRejectingDeposit(null)}
+                className="p-1 rounded-lg text-[#7b8c9f] hover:text-white"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-[#c0cbd8] mb-1.5">
+                Reason for Rejection
+              </label>
+              <textarea
+                rows={3}
+                placeholder="e.g. Transaction hash not found on blockchain or incorrect deposit address..."
+                value={depositRejectReason}
+                onChange={(e) => setDepositRejectReason(e.target.value)}
+                className="w-full p-3 rounded-xl bg-[#080e18] border border-[#172537] text-xs text-white placeholder-[#5a6a7c] focus:outline-none focus:border-[#ff5a63]"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={() => setRejectingDeposit(null)}
+                className="flex-1 py-2.5 rounded-xl bg-[#142337] hover:bg-[#1a2e47] text-white text-xs font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectDeposit}
+                className="flex-1 py-2.5 rounded-xl bg-[#ff5a63] hover:bg-[#ff6e76] text-white text-xs font-bold transition-all shadow-lg shadow-[#ff5a63]/20"
+              >
+                Confirm Reject
               </button>
             </div>
           </div>
@@ -1874,20 +2230,22 @@ export function AdminPanel() {
               </button>
               <button
                 onClick={() => {
-                  setActiveTab("referrals");
+                  setActiveTab("deposits");
                   setMobileMenuOpen(false);
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium ${
-                  activeTab === "referrals" ? "bg-[#111c2a] text-white" : "text-[#8796a8]"
+                  activeTab === "deposits" ? "bg-[#111c2a] text-white" : "text-[#8796a8]"
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <GitFork className="size-4.5" />
-                  <span>Referral Network</span>
+                  <ArrowUpRight className="size-4.5" />
+                  <span>Recharge Requests</span>
                 </div>
-                <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#162334] text-[#8aa0b6]">
-                  {referralNetwork.length}
-                </span>
+                {metrics.pendingDepositCount > 0 && (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#09c48d] text-black">
+                    {metrics.pendingDepositCount}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => {
@@ -1907,6 +2265,23 @@ export function AdminPanel() {
                     {metrics.pendingCount}
                   </span>
                 )}
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("referrals");
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium ${
+                  activeTab === "referrals" ? "bg-[#111c2a] text-white" : "text-[#8796a8]"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <GitFork className="size-4.5" />
+                  <span>Referral Network</span>
+                </div>
+                <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#162334] text-[#8aa0b6]">
+                  {referralNetwork.length}
+                </span>
               </button>
             </nav>
 

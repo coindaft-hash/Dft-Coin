@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { getUserInviteCode, maskEmail } from "@/lib/referral-team";
+import { getUserInviteCode } from "@/lib/referral-team";
 
 export interface AdminUser {
   id: string;
@@ -26,6 +26,7 @@ export interface AdminDeposit {
   network: string;
   tx_hash: string;
   status: "completed" | "pending" | "rejected";
+  reject_reason?: string;
   created_at: string;
 }
 
@@ -152,7 +153,6 @@ export function getAdminUsers(): AdminUser[] {
             email.split("@")[0]
           ).trim();
 
-          // Get live wallet balance
           let liveBal = 0;
           try {
             const rawWallet = localStorage.getItem("vertex-test-account-v2") || localStorage.getItem("vertex-test-account-v1");
@@ -209,6 +209,48 @@ export function getAdminUsers(): AdminUser[] {
   );
 }
 
+/**
+ * Async query that fetches live users from Supabase and merges with local storage.
+ * Ensures the admin panel on Vercel sees users registered on any device!
+ */
+export async function fetchAdminUsersAsync(): Promise<AdminUser[]> {
+  const localList = getAdminUsers();
+  const usersMap = new Map<string, AdminUser>();
+  localList.forEach(u => usersMap.set(u.id, u));
+
+  try {
+    const { data: dbUsers, error } = await supabase.from("users").select("*");
+    if (!error && Array.isArray(dbUsers)) {
+      dbUsers.forEach((row: any) => {
+        if (!row || (!row.email && !row.id)) return;
+        const id = row.id || `usr_${row.email}`;
+        usersMap.set(id, {
+          id,
+          name: row.full_name || row.email?.split("@")[0] || "Vertex Member",
+          email: row.email,
+          phone: row.phone || "—",
+          balance: Number(row.balance || 0),
+          frozen_balance: Number(row.frozen_balance ?? 20.0),
+          total_deposit: Number(row.total_deposited || 0),
+          total_withdraw: Number(row.total_withdrawn || 0),
+          created_at: row.created_at || new Date().toISOString(),
+          status: row.status === "blocked" ? "blocked" : "active",
+          role: row.role || "user",
+          referred_by: row.referred_by || null,
+          invite_code: row.referral_code || "VTX8829",
+        });
+      });
+    }
+  } catch {}
+
+  const result = Array.from(usersMap.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  saveAdminUsers(result);
+  return result;
+}
+
 export function saveAdminUsers(users: AdminUser[]) {
   if (typeof window === "undefined") return;
   try {
@@ -249,6 +291,11 @@ export function toggleUserStatus(userId: string): AdminUser[] {
         localStorage.setItem("vx-accounts", JSON.stringify(updated));
       }
     }
+  } catch {}
+
+  // Sync to Supabase
+  try {
+    void supabase.from("users").update({ status: nextStatus }).eq("id", userId);
   } catch {}
 
   return getAdminUsers();
@@ -299,6 +346,15 @@ export function adjustUserBalance(userId: string, amountDelta: number, note: str
     }
   } catch {}
 
+  // Sync to Supabase users table
+  try {
+    const users = getAdminUsers();
+    const u = users.find(x => x.id === userId);
+    if (u) {
+      void supabase.from("users").update({ balance: u.balance }).eq("id", userId);
+    }
+  } catch {}
+
   return getAdminUsers();
 }
 
@@ -325,8 +381,8 @@ export function getAdminWithdrawals(): AdminWithdrawal[] {
               user_name: w.user_name || "Vertex User",
               user_email: w.user_email || "user@vertex.market",
               amount: Number(w.amount || 0),
-              network: w.network || "USDT (TRC20)",
-              address: w.address || "0x...",
+              network: w.network || "USDT (BEP20)",
+              address: w.address || w.account_number || "0x...",
               status: w.status || "pending",
               reject_reason: w.reject_reason,
               created_at: w.created_at || new Date().toISOString(),
@@ -353,8 +409,8 @@ export function getAdminWithdrawals(): AdminWithdrawal[] {
               user_name: w.user_name || "Vertex User",
               user_email: w.user_email || "user@vertex.market",
               amount: Number(w.amount || 0),
-              network: w.network ? `USDT (${w.network.toUpperCase()})` : "USDT (TRC20)",
-              address: w.address || "0x...",
+              network: w.network ? w.network : "USDT (BEP20)",
+              address: w.address || w.account_number || "0x...",
               status: w.status || "pending",
               reject_reason: w.reject_reason,
               created_at: w.created_at || new Date().toISOString(),
@@ -366,10 +422,46 @@ export function getAdminWithdrawals(): AdminWithdrawal[] {
     }
   } catch {}
 
-  const list = Array.from(withdrawalsMap.values()).sort(
+  return Array.from(withdrawalsMap.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+}
+
+/**
+ * Async fetch of withdrawals from Supabase database merged with local storage.
+ */
+export async function fetchAdminWithdrawalsAsync(): Promise<AdminWithdrawal[]> {
+  const localList = getAdminWithdrawals();
+  const map = new Map<string, AdminWithdrawal>();
+  localList.forEach(w => map.set(w.id, w));
+
+  try {
+    const { data: dbWithdrawals, error } = await supabase.from("withdrawals").select("*");
+    if (!error && Array.isArray(dbWithdrawals)) {
+      dbWithdrawals.forEach((row: any) => {
+        if (!row || !row.id) return;
+        map.set(row.id, {
+          id: row.id,
+          user_id: row.user_id || "usr_client",
+          user_name: row.user_name || "Registered User",
+          user_email: row.user_email || "member@vertex.market",
+          amount: Number(row.amount || 0),
+          network: row.network || "USDT (BEP20)",
+          address: row.account_number || row.address || "0x...",
+          status: row.status || "pending",
+          reject_reason: row.reject_reason,
+          created_at: row.created_at || new Date().toISOString(),
+          processed_at: row.updated_at,
+        });
+      });
+    }
+  } catch {}
+
+  const list = Array.from(map.values()).sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
+  saveAdminWithdrawals(list);
   return list;
 }
 
@@ -407,9 +499,9 @@ export async function approveWithdrawal(withdrawalId: string): Promise<AdminWith
     }
   } catch {}
 
-  // Update Supabase if available
+  // Update Supabase
   try {
-    await supabase.from("withdrawals").update({ status: "approved" }).eq("id", withdrawalId);
+    await supabase.from("withdrawals").update({ status: "approved", updated_at: new Date().toISOString() }).eq("id", withdrawalId);
   } catch {}
 
   return updated;
@@ -439,7 +531,6 @@ export async function rejectWithdrawal(withdrawalId: string, reason: string): Pr
       creditTestDeposit(target.amount);
     } catch {}
 
-    // Adjust user account balance
     adjustUserBalance(target.user_id, target.amount, `Withdrawal Refund · #${withdrawalId.slice(-6)}`);
   }
 
@@ -457,17 +548,18 @@ export async function rejectWithdrawal(withdrawalId: string, reason: string): Pr
     }
   } catch {}
 
-  // Try calling Supabase RPC if available
+  // Call Supabase RPC for atomic refund & reject
   try {
     const { error } = await supabase.rpc("reject_withdrawal_and_refund", {
       p_withdrawal_id: withdrawalId,
       p_reason: reason,
     });
     if (error) {
-      await supabase.rpc("reject_withdrawal_and_refund", {
-        _id: withdrawalId,
-        _reason: reason,
-      });
+      await supabase.from("withdrawals").update({
+        status: "rejected",
+        reject_reason: reason,
+        updated_at: new Date().toISOString(),
+      }).eq("id", withdrawalId);
     }
   } catch {}
 
@@ -476,7 +568,6 @@ export async function rejectWithdrawal(withdrawalId: string, reason: string): Pr
 
 /**
  * Loads REAL deposits only — NO dummy sample data.
- * Reads strictly from user deposit records in vx-deposit-records and vx_admin_deposits.
  */
 export function getAdminDeposits(): AdminDeposit[] {
   if (typeof window === "undefined") return [];
@@ -497,9 +588,10 @@ export function getAdminDeposits(): AdminDeposit[] {
               user_name: d.user_name || "Vertex User",
               user_email: d.user_email || "user@vertex.market",
               amount: Number(d.amount || 0),
-              network: d.network || "BSC (BEP20)",
+              network: d.network || "USDT (BEP20)",
               tx_hash: d.tx_hash || "0x...",
               status: d.status || "completed",
+              reject_reason: d.reject_reason,
               created_at: d.created_at || new Date().toISOString(),
             });
           }
@@ -523,7 +615,7 @@ export function getAdminDeposits(): AdminDeposit[] {
               user_name: r.user_name || "Vertex Member",
               user_email: r.user_email || "member@vertex.market",
               amount: Number(r.detected_amount || r.expected_amount || 0),
-              network: r.network ? `USDT (${String(r.network).toUpperCase()})` : "USDT (BSC)",
+              network: r.network ? `USDT (${String(r.network).toUpperCase()})` : "USDT (BEP20)",
               tx_hash: r.tx_hash || "0x...",
               status: r.status === "review" ? "pending" : r.status === "rejected" ? "rejected" : "completed",
               created_at: r.created_at || new Date().toISOString(),
@@ -537,6 +629,42 @@ export function getAdminDeposits(): AdminDeposit[] {
   return Array.from(depositsMap.values()).sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
+}
+
+/**
+ * Async fetch of deposits from Supabase database merged with local storage.
+ */
+export async function fetchAdminDepositsAsync(): Promise<AdminDeposit[]> {
+  const localList = getAdminDeposits();
+  const map = new Map<string, AdminDeposit>();
+  localList.forEach(d => map.set(d.id, d));
+
+  try {
+    const { data: dbDeposits, error } = await supabase.from("deposits").select("*");
+    if (!error && Array.isArray(dbDeposits)) {
+      dbDeposits.forEach((row: any) => {
+        if (!row || !row.id) return;
+        map.set(row.id, {
+          id: row.id,
+          user_id: row.user_id || "usr_client",
+          user_name: row.user_name || "Registered Member",
+          user_email: row.user_email || "user@vertex.market",
+          amount: Number(row.amount || 0),
+          network: row.currency ? `USDT (BEP20)` : "USDT (BEP20)",
+          tx_hash: row.tx_hash || "0x...",
+          status: row.status === "approved" ? "completed" : row.status === "rejected" ? "rejected" : "pending",
+          created_at: row.created_at || new Date().toISOString(),
+        });
+      });
+    }
+  } catch {}
+
+  const list = Array.from(map.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  saveAdminDeposits(list);
+  return list;
 }
 
 export function saveAdminDeposits(deposits: AdminDeposit[]) {
@@ -558,9 +686,14 @@ export function approveDeposit(depositId: string): AdminDeposit[] {
 
   saveAdminDeposits(updated);
 
-  // Credit amount to user's wallet if not already done
+  // Credit amount to user's wallet
   if (target && target.amount > 0) {
-    adjustUserBalance(target.user_id, target.amount, `Deposit Approved · #${depositId.slice(-6)}`);
+    try {
+      const { creditTestDeposit } = require("@/lib/demo-positions");
+      creditTestDeposit(target.amount);
+    } catch {}
+
+    adjustUserBalance(target.user_id, target.amount, `Recharge Approved · #${depositId.slice(-6)}`);
   }
 
   // Update in vx-deposit-records
@@ -575,12 +708,45 @@ export function approveDeposit(depositId: string): AdminDeposit[] {
     }
   } catch {}
 
+  // Update in Supabase
+  try {
+    void supabase.from("deposits").update({ status: "approved" }).eq("id", depositId);
+  } catch {}
+
+  return updated;
+}
+
+export function rejectDeposit(depositId: string, reason: string): AdminDeposit[] {
+  const deposits = getAdminDeposits();
+  const updated = deposits.map(d => {
+    if (d.id === depositId) {
+      return { ...d, status: "rejected" as const, reject_reason: reason };
+    }
+    return d;
+  });
+
+  saveAdminDeposits(updated);
+
+  try {
+    const raw = localStorage.getItem("vx-deposit-records");
+    if (raw) {
+      const records = JSON.parse(raw);
+      if (Array.isArray(records)) {
+        const synced = records.map((r: any) => (r.id === depositId ? { ...r, status: "rejected" } : r));
+        localStorage.setItem("vx-deposit-records", JSON.stringify(synced));
+      }
+    }
+  } catch {}
+
+  try {
+    void supabase.from("deposits").update({ status: "rejected" }).eq("id", depositId);
+  } catch {}
+
   return updated;
 }
 
 /**
  * Calculates REAL daily volume for the past 7 days based strictly on actual transactions.
- * If no transaction happened on a day, it genuinely displays 0.00.
  */
 export function getWeeklyChartData(daysCount: number = 7): ChartDayData[] {
   const deposits = getAdminDeposits();
@@ -595,12 +761,10 @@ export function getWeeklyChartData(daysCount: number = 7): ChartDayData[] {
     const dateStr = d.toISOString().slice(0, 10);
     const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-    // Sum deposits that occurred on this date
     const dayDeposit = deposits
       .filter(dep => dep.status === "completed" && dep.created_at.slice(0, 10) === dateStr)
       .reduce((sum, dep) => sum + dep.amount, 0);
 
-    // Sum withdrawals that were approved or submitted on this date
     const dayWithdraw = withdrawals
       .filter(wth => (wth.status === "approved" || wth.status === "pending") && wth.created_at.slice(0, 10) === dateStr)
       .reduce((sum, wth) => sum + wth.amount, 0);
@@ -623,35 +787,31 @@ export function getDashboardMetrics() {
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  // Total Completed Deposits
   const completedDeposits = deposits.filter(d => d.status === "completed");
   const totalDeposit = completedDeposits.reduce((acc, d) => acc + d.amount, 0);
 
-  // Today's Completed Deposits
   const todayDeposit = completedDeposits
     .filter(d => d.created_at.slice(0, 10) === todayStr)
     .reduce((acc, d) => acc + d.amount, 0);
 
-  // Total Approved Withdrawals
   const approvedWithdrawals = withdrawals.filter(w => w.status === "approved");
   const totalWithdraw = approvedWithdrawals.reduce((acc, w) => acc + w.amount, 0);
 
-  // Today's Approved Withdrawals
   const todayWithdraw = approvedWithdrawals
     .filter(w => (w.processed_at?.slice(0, 10) === todayStr || w.created_at.slice(0, 10) === todayStr))
     .reduce((acc, w) => acc + w.amount, 0);
 
-  // Pending Withdrawals
   const pendingWithdrawals = withdrawals.filter(w => w.status === "pending");
   const pendingCount = pendingWithdrawals.length;
   const pendingAmount = pendingWithdrawals.reduce((acc, w) => acc + w.amount, 0);
 
-  // Users
+  const pendingDeposits = deposits.filter(d => d.status === "pending");
+  const pendingDepositCount = pendingDeposits.length;
+
   const totalUsers = users.length;
   const activeUsers = users.filter(u => u.status === "active").length;
   const blockedUsers = users.filter(u => u.status === "blocked").length;
 
-  // Net Cash Flow
   const netFlow = totalDeposit - totalWithdraw;
 
   return {
@@ -661,6 +821,7 @@ export function getDashboardMetrics() {
     todayWithdraw,
     pendingCount,
     pendingAmount,
+    pendingDepositCount,
     totalUsers,
     activeUsers,
     blockedUsers,
@@ -668,14 +829,11 @@ export function getDashboardMetrics() {
   };
 }
 
-/**
- * Downloads a genuine CSV file from real table data for financial audits.
- */
 export function exportDataToCsv(type: "users" | "withdrawals" | "deposits") {
   if (typeof window === "undefined") return;
 
   let csvContent = "";
-  let filename = `vertex_${type}_${new Date().toISOString().slice(0, 10)}.csv`;
+  const filename = `vertex_${type}_${new Date().toISOString().slice(0, 10)}.csv`;
 
   if (type === "users") {
     const users = getAdminUsers();

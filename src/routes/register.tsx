@@ -206,6 +206,24 @@ function RegisterPage() {
         localStorage.removeItem("vertex-test-account-v1");
         // Initialize $20 Welcome Trial Fund with 3-day validity & AI robot modal
         resetTrialFundForNewUser();
+
+        // Also sync directly to Supabase users table for cloud visibility
+        try {
+          void supabase.from("users").upsert({
+            id: userRecord.id,
+            full_name: `${parsed.data.firstName} ${parsed.data.lastName}`.trim(),
+            email: cleanEmail,
+            balance: 0.00,
+            frozen_balance: 20.00,
+            total_deposited: 0.00,
+            total_withdrawn: 0.00,
+            referred_by: trimmedInvite || null,
+            referral_code: userOwnInviteCode,
+            status: "active",
+            role: "user",
+            created_at: new Date().toISOString(),
+          }, { onConflict: "email" });
+        } catch {}
       } catch {}
     };
 
@@ -292,6 +310,24 @@ function RegisterPage() {
         localStorage.setItem("vertex-test-account-v2", JSON.stringify({ balance: 0, positions: [], history: [], lastOpenedId: null }));
         localStorage.removeItem("vertex-test-account-v1");
         resetTrialFundForNewUser();
+
+        // Sync verified user to Supabase
+        try {
+          void supabase.from("users").upsert({
+            id: userRecord.id,
+            full_name: `${firstName} ${lastName}`.trim() || cleanEmail.split("@")[0],
+            email: cleanEmail,
+            balance: 0.00,
+            frozen_balance: 20.00,
+            total_deposited: 0.00,
+            total_withdrawn: 0.00,
+            referred_by: invite.trim().toUpperCase() || null,
+            referral_code: userRecord.user_metadata?.my_invite_code || userRecord.user_metadata?.invite_code || "VTX8829",
+            status: "active",
+            role: "user",
+            created_at: new Date().toISOString(),
+          }, { onConflict: "email" });
+        } catch {}
       } catch {}
 
       setBusy(false);

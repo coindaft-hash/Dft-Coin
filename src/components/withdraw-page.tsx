@@ -50,8 +50,13 @@ export function WithdrawPage() {
   const [codeSent, setCodeSent] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
+  // Address and Network states
+  const [withdrawAddress, setWithdrawAddress] = useState(() => account?.withdrawAddress || "");
+  const [withdrawNetwork, setWithdrawNetwork] = useState<"bep20" | "trc20" | "erc20">("bep20");
+  const [addressError, setAddressError] = useState<string | null>(null);
+
   // Interactive focus states for fine-tuned icon and border styling
-  const [focusedField, setFocusedField] = useState<"amount" | "password" | "code" | null>(null);
+  const [focusedField, setFocusedField] = useState<"address" | "amount" | "password" | "code" | null>(null);
 
   // Validation errors
   const [amountError, setAmountError] = useState<string | null>(null);
@@ -188,7 +193,14 @@ export function WithdrawPage() {
     setGeneralError(null);
     setSuccessNotice(null);
 
-    // Validation 1: Amount
+    // Validation 1: Address
+    const cleanAddress = withdrawAddress.trim();
+    if (!cleanAddress || cleanAddress.length < 10) {
+      setAddressError("Please enter a valid BEP20 USDT destination wallet address");
+      return;
+    }
+
+    // Validation 2: Amount
     if (!amount || amountNum <= 0) {
       setAmountError("Enter an amount");
       return;
@@ -202,13 +214,13 @@ export function WithdrawPage() {
       return;
     }
 
-    // Validation 2: Password
+    // Validation 3: Password
     if (!withdrawalPassword.trim()) {
       setPasswordError("Enter your withdrawal password");
       return;
     }
 
-    // Validation 3: Verification Code
+    // Validation 4: Verification Code
     if (!codeSent) {
       setCodeError("Please request an email verification code first.");
       return;
@@ -221,11 +233,23 @@ export function WithdrawPage() {
     setBusy(true);
 
     try {
+      let userId = account?.id;
+      let userName = account?.fullName;
       let userEmail = account?.email;
-      if (!userEmail) {
+
+      if (!userId || !userEmail) {
         try {
           const raw = localStorage.getItem("vx-mock-user");
-          if (raw) userEmail = JSON.parse(raw).email;
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            userId = userId || parsed.id;
+            userEmail = userEmail || parsed.email;
+            userName =
+              userName ||
+              parsed.user_metadata?.full_name ||
+              parsed.full_name ||
+              parsed.email?.split("@")[0];
+          }
         } catch {}
       }
 
@@ -242,8 +266,12 @@ export function WithdrawPage() {
         return;
       }
 
-      const targetAddress = account?.withdrawAddress?.trim() || "0x71C...SavedWalletAddress";
-      const targetNetwork = account?.withdrawNetwork === "ethereum" ? "ethereum" : "bsc";
+      const networkLabel =
+        withdrawNetwork === "bep20"
+          ? "USDT (BEP20)"
+          : withdrawNetwork === "trc20"
+          ? "USDT (TRC20)"
+          : "USDT (ERC20)";
 
       // 1. Deduct from local test / available balance immediately
       try {
@@ -253,8 +281,8 @@ export function WithdrawPage() {
       // 2. Call backend RPC if available
       try {
         await supabase.rpc("request_withdrawal", {
-          _network: targetNetwork,
-          _address: targetAddress,
+          _network: withdrawNetwork,
+          _address: cleanAddress,
           _amount: Math.round(amountNum * 100) / 100,
         });
       } catch {}
@@ -263,14 +291,16 @@ export function WithdrawPage() {
       try {
         const record = {
           id: "wth_" + Date.now(),
-          user_id: account?.id || "usr_client",
-          user_name: account?.fullName || "ওয়েবসাইট ইউজার",
-          user_email: account?.email || "user@vertex.market",
+          user_id: userId || "usr_client",
+          user_name: userName || userEmail?.split("@")[0] || "Registered User",
+          user_email: userEmail || "member@vertex.market",
           amount: amountNum,
           fee: feeAmount,
           actualArrival,
-          network: targetNetwork ? `USDT (${targetNetwork.toUpperCase()})` : "USDT (TRC20)",
-          address: targetAddress,
+          payment_method: "USDT",
+          network: networkLabel,
+          account_number: cleanAddress,
+          address: cleanAddress,
           status: "pending",
           created_at: new Date().toISOString(),
         };
@@ -288,7 +318,15 @@ export function WithdrawPage() {
 
         // Attempt Supabase insert if connected
         try {
-          await supabase.from("withdrawals").insert(record);
+          await supabase.from("withdrawals").insert({
+            user_id: record.user_id,
+            amount: record.amount,
+            payment_method: "USDT",
+            network: record.network,
+            account_number: record.address,
+            status: "pending",
+            created_at: record.created_at,
+          });
         } catch {}
       } catch {}
 
@@ -373,8 +411,90 @@ export function WithdrawPage() {
 
         {/* Withdrawal Form */}
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
-          {/* 3. Amount Field */}
+          {/* Network Selector */}
           <div style={getItemStyle(2)}>
+            <label className="block text-[13px] font-medium text-[#c8d0da] mb-[7px]">
+              Withdrawal Network
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setWithdrawNetwork("bep20")}
+                className={`py-2 px-3 rounded-[10px] text-[12px] font-semibold border transition-all ${
+                  withdrawNetwork === "bep20"
+                    ? "bg-[#09c48d]/15 border-[#09c48d] text-[#34cc9b]"
+                    : "bg-[#111b27] border-[#1d2a38] text-[#8b95a1] hover:text-white"
+                }`}
+              >
+                BEP20 (BSC)
+              </button>
+              <button
+                type="button"
+                onClick={() => setWithdrawNetwork("trc20")}
+                className={`py-2 px-3 rounded-[10px] text-[12px] font-semibold border transition-all ${
+                  withdrawNetwork === "trc20"
+                    ? "bg-[#09c48d]/15 border-[#09c48d] text-[#34cc9b]"
+                    : "bg-[#111b27] border-[#1d2a38] text-[#8b95a1] hover:text-white"
+                }`}
+              >
+                TRC20
+              </button>
+              <button
+                type="button"
+                onClick={() => setWithdrawNetwork("erc20")}
+                className={`py-2 px-3 rounded-[10px] text-[12px] font-semibold border transition-all ${
+                  withdrawNetwork === "erc20"
+                    ? "bg-[#09c48d]/15 border-[#09c48d] text-[#34cc9b]"
+                    : "bg-[#111b27] border-[#1d2a38] text-[#8b95a1] hover:text-white"
+                }`}
+              >
+                ERC20
+              </button>
+            </div>
+          </div>
+
+          {/* Destination Wallet Address */}
+          <div style={getItemStyle(2.5)}>
+            <label
+              htmlFor="withdraw-address"
+              className="block text-[13px] font-medium text-[#c8d0da] mb-[7px]"
+            >
+              {withdrawNetwork === "bep20" ? "BEP20" : withdrawNetwork === "trc20" ? "TRC20" : "ERC20"} Destination Wallet Address
+            </label>
+            <div
+              className={`relative flex items-center h-[50px] rounded-[12px] px-[14px] transition-all duration-200 ${
+                addressError
+                  ? "bg-[#111b27] ring-[1.5px] ring-[#ff5a63]"
+                  : focusedField === "address"
+                    ? "bg-[#16222f] ring-[1.5px] ring-[#09c48d]"
+                    : "bg-[#111b27]"
+              }`}
+            >
+              <input
+                id="withdraw-address"
+                type="text"
+                autoComplete="off"
+                placeholder={withdrawNetwork === "trc20" ? "Enter TRC20 address (T...)" : "Enter BEP20 USDT address (0x...)"}
+                value={withdrawAddress}
+                onChange={(e) => {
+                  setWithdrawAddress(e.target.value);
+                  if (addressError) setAddressError(null);
+                  if (generalError) setGeneralError(null);
+                }}
+                onFocus={() => setFocusedField("address")}
+                onBlur={() => setFocusedField(null)}
+                className="w-full h-full bg-transparent text-[14px] text-[#eef2f6] placeholder-[#5a6677] outline-none font-mono"
+              />
+            </div>
+            {addressError && (
+              <p className="text-[12px] text-[#ff5a63] mt-1.5 ml-1 transition-opacity duration-200 animate-in fade-in-50">
+                {addressError}
+              </p>
+            )}
+          </div>
+
+          {/* 3. Amount Field */}
+          <div style={getItemStyle(3)}>
             <label
               htmlFor="withdraw-amount"
               className="block text-[13px] font-medium text-[#c8d0da] mb-[7px]"

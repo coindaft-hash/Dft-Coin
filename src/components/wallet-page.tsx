@@ -123,6 +123,48 @@ export function DepositPage() {
         try { localStorage.setItem("vx-deposit-records", JSON.stringify(updated)); } catch {}
         return updated;
       });
+
+      // Sync real recharge to Supabase and Admin store
+      try {
+        let userId = "usr_client";
+        let userEmail = "client@vertex.market";
+        let userName = "Vertex Member";
+        try {
+          const raw = localStorage.getItem("vx-mock-user");
+          if (raw) {
+            const u = JSON.parse(raw);
+            userId = u.id || userId;
+            userEmail = u.email || userEmail;
+            userName = u.user_metadata?.full_name || u.full_name || u.email?.split("@")[0] || userName;
+          }
+        } catch {}
+
+        const adminDep = {
+          id: record.id,
+          user_id: userId,
+          user_name: userName,
+          user_email: userEmail,
+          amount: record.expected_amount,
+          network: `${coin} (${config.label} ${config.standard})`,
+          tx_hash: record.tx_hash,
+          status: "pending",
+          created_at: record.created_at,
+        };
+
+        const adminStored = localStorage.getItem("vx_admin_deposits");
+        const adminList = adminStored ? JSON.parse(adminStored) : [];
+        adminList.unshift(adminDep);
+        localStorage.setItem("vx_admin_deposits", JSON.stringify(adminList));
+
+        void supabase.from("deposits").insert({
+          user_id: userId,
+          amount: record.expected_amount,
+          currency: coin,
+          tx_hash: record.tx_hash,
+          status: "pending",
+          created_at: record.created_at,
+        });
+      } catch {}
     } finally {
       setBusy(false);
     }
