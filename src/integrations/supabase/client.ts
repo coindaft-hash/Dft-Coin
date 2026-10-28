@@ -585,12 +585,17 @@ function wrapSupabaseAuth(client: any) {
 }
 
 function createSupabaseClient() {
+  const localUrl = typeof localStorage !== 'undefined' ? localStorage.getItem('vx_supabase_url') : undefined;
+  const localKey = typeof localStorage !== 'undefined' ? localStorage.getItem('vx_supabase_key') : undefined;
+
   const rawUrl =
+    localUrl ||
     (typeof import.meta !== 'undefined' && import.meta.env?.['VITE_SUPABASE_URL']) ||
     (typeof process !== 'undefined' ? (process.env?.['VITE_SUPABASE_URL'] || process.env?.['SUPABASE_URL']) : undefined) ||
     (typeof window !== 'undefined' ? (window as any).__ENV__?.['VITE_SUPABASE_URL'] : undefined);
 
   const rawKey =
+    localKey ||
     (typeof import.meta !== 'undefined' &&
       (import.meta.env?.['VITE_SUPABASE_PUBLISHABLE_KEY'] ||
         import.meta.env?.['VITE_SUPABASE_ANON_KEY'] ||

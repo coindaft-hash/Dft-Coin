@@ -50,6 +50,7 @@ import {
   rejectWithdrawal,
   toggleUserStatus,
   adjustUserBalance,
+  createAdminUser,
   approveDeposit,
   rejectDeposit,
   exportDataToCsv,
@@ -87,6 +88,19 @@ export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
   const [adjustAmount, setAdjustAmount] = useState<string>("");
   const [adjustType, setAdjustType] = useState<"credit" | "debit">("credit");
   const [adjustNote, setAdjustNote] = useState<string>("");
+
+  // Add User State
+  const [addUserModalOpen, setAddUserModalOpen] = useState(false);
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("123456");
+  const [newUserBalance, setNewUserBalance] = useState("0");
+  const [newUserPhone, setNewUserPhone] = useState("");
+  const [newUserInviteCode, setNewUserInviteCode] = useState("");
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+
+  // DB Setup Modal State
+  const [dbModalOpen, setDbModalOpen] = useState(false);
 
   const [inspectTeamCode, setInspectTeamCode] = useState<string | null>(null);
   const [inspectTeamName, setInspectTeamName] = useState<string>("");
@@ -281,6 +295,44 @@ export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
     setBalanceAdjustUser(null);
     setAdjustAmount("");
     setAdjustNote("");
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserName.trim()) {
+      showNotification("User's full name is required", "error");
+      return;
+    }
+    if (!newUserEmail.trim()) {
+      showNotification("Email address is required", "error");
+      return;
+    }
+    setIsCreatingUser(true);
+    try {
+      const created = await createAdminUser({
+        name: newUserName.trim(),
+        email: newUserEmail.trim(),
+        password: newUserPassword.trim() || "123456",
+        balance: parseFloat(newUserBalance) || 0,
+        phone: newUserPhone.trim(),
+        invite_code: newUserInviteCode.trim(),
+      });
+      await loadData();
+      showNotification(
+        `User ${created.name} (${created.email}) created successfully with $${created.balance.toFixed(2)} USDT!`
+      );
+      setAddUserModalOpen(false);
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserPassword("123456");
+      setNewUserBalance("0");
+      setNewUserPhone("");
+      setNewUserInviteCode("");
+    } catch (err: any) {
+      showNotification(err?.message || "Failed to create user", "error");
+    } finally {
+      setIsCreatingUser(false);
+    }
   };
 
   // Chart data
@@ -564,6 +616,16 @@ export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
               >
                 <RefreshCw className={`size-3.5 ${isRefreshing ? "animate-spin text-[#09c48d]" : ""}`} />
                 <span className="hidden sm:inline">Sync Cloud</span>
+              </button>
+
+              {/* Database SQL Setup Modal Trigger */}
+              <button
+                onClick={() => setDbModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#00d4ff]/10 hover:bg-[#00d4ff]/20 border border-[#00d4ff]/30 text-xs font-semibold text-[#00d4ff] transition-all"
+                title="View Supabase Cloud SQL setup"
+              >
+                <Wallet className="size-3.5" />
+                <span className="hidden sm:inline">Supabase Fix</span>
               </button>
 
               {/* Export Dropdown */}
@@ -1026,6 +1088,14 @@ export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
                         Blocked ({metrics.blockedUsers})
                       </button>
                     </div>
+
+                    <button
+                      onClick={() => setAddUserModalOpen(true)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#09c48d] hover:bg-[#0bd69a] text-[#04140e] text-xs font-bold transition-all shadow-md shrink-0 cursor-pointer"
+                    >
+                      <Plus className="size-4 stroke-[2.5]" />
+                      <span>Add User</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1152,11 +1222,17 @@ export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
                                   </button>
 
                                   <button
-                                    onClick={() => setBalanceAdjustUser(user)}
-                                    className="px-2 py-1 rounded-lg bg-[#0e1b29] hover:bg-[#162a3f] text-[#00d4ff] text-[11px] font-medium border border-[#00d4ff]/20 transition-colors"
-                                    title="Adjust real wallet balance"
+                                    onClick={() => {
+                                      setBalanceAdjustUser(user);
+                                      setAdjustType("credit");
+                                      setAdjustAmount("");
+                                      setAdjustNote("Admin manual recharge");
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-[#09c48d]/15 hover:bg-[#09c48d]/25 text-[#09c48d] text-[11px] font-bold border border-[#09c48d]/30 transition-all flex items-center gap-1 shadow-sm"
+                                    title="Give / Add balance to this user"
                                   >
-                                    Adjust $
+                                    <DollarSign className="size-3 stroke-[2.5]" />
+                                    <span>Give Balance</span>
                                   </button>
 
                                   <button
@@ -1862,12 +1938,12 @@ export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
                 onClick={() => setAdjustType("credit")}
                 className={`py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                   adjustType === "credit"
-                    ? "bg-[#09c48d] text-[#04140e] shadow"
+                    ? "bg-[#09c48d] text-[#04140e] shadow-md font-bold"
                     : "text-[#7b8c9f] hover:text-white"
                 }`}
               >
                 <Plus className="size-3.5 stroke-[2.5]" />
-                <span>Credit (Deposit)</span>
+                <span>Give Balance (Credit)</span>
               </button>
 
               <button
@@ -1875,24 +1951,43 @@ export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
                 onClick={() => setAdjustType("debit")}
                 className={`py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                   adjustType === "debit"
-                    ? "bg-[#ff5a63] text-white shadow"
+                    ? "bg-[#ff5a63] text-white shadow-md font-bold"
                     : "text-[#7b8c9f] hover:text-white"
                 }`}
               >
                 <Minus className="size-3.5 stroke-[2.5]" />
-                <span>Debit (Deduct)</span>
+                <span>Deduct Balance</span>
               </button>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-[#c0cbd8] mb-1.5">
-                Amount (USDT)
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-[#c0cbd8]">
+                  Amount (USDT)
+                </label>
+                <span className="text-[11px] text-[#09c48d] font-semibold">Quick Presets:</span>
+              </div>
+              <div className="grid grid-cols-6 gap-1.5 mb-2.5">
+                {[10, 25, 50, 100, 500, 1000].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setAdjustAmount(String(val))}
+                    className={`py-1 rounded-lg text-[11px] font-mono font-bold border transition-all ${
+                      adjustAmount === String(val)
+                        ? "bg-[#09c48d]/20 border-[#09c48d] text-[#09c48d]"
+                        : "bg-[#080e18] border-[#172537] text-[#8aa0b6] hover:border-[#09c48d]/40 hover:text-white"
+                    }`}
+                  >
+                    +${val}
+                  </button>
+                ))}
+              </div>
               <input
                 type="number"
                 step="any"
                 min="0.01"
-                placeholder="e.g. 50.00"
+                placeholder="Enter amount (e.g. 100.00)"
                 value={adjustAmount}
                 onChange={(e) => setAdjustAmount(e.target.value)}
                 required
@@ -1906,7 +2001,7 @@ export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
               </label>
               <input
                 type="text"
-                placeholder="e.g. Manual test credit or customer support adjustment"
+                placeholder="e.g. Admin balance grant or deposit credit"
                 value={adjustNote}
                 onChange={(e) => setAdjustNote(e.target.value)}
                 className="w-full h-10 px-3 rounded-xl bg-[#080e18] border border-[#172537] text-xs text-white placeholder-[#5a6a7c] focus:outline-none focus:border-[#09c48d]"
@@ -1923,13 +2018,15 @@ export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
               </button>
               <button
                 type="submit"
-                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${
                   adjustType === "credit"
                     ? "bg-[#09c48d] hover:bg-[#0bd69a] text-[#04140e]"
                     : "bg-[#ff5a63] hover:bg-[#ff6e76] text-white"
                 }`}
               >
-                Confirm {adjustType === "credit" ? "Credit" : "Deduct"}
+                {adjustType === "credit"
+                  ? `Give $${adjustAmount ? parseFloat(adjustAmount).toFixed(2) : "0.00"} USDT`
+                  : `Deduct $${adjustAmount ? parseFloat(adjustAmount).toFixed(2) : "0.00"} USDT`}
               </button>
             </div>
           </form>
@@ -2307,6 +2404,215 @@ export function AdminPanel({ onLock }: { onLock?: () => void } = {}) {
                 <span>Go to User App</span>
               </Link>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: ADD NEW USER */}
+      {/* ============================================================== */}
+      {addUserModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in-50">
+          <form
+            onSubmit={handleCreateUser}
+            className="w-full max-w-md rounded-2xl bg-[#0d1624] border border-[#1b2b3f] p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-[#18283a]">
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-lg bg-[#09c48d]/10 text-[#09c48d] grid place-items-center">
+                  <UserCheck className="size-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Create New User Account</h3>
+                  <p className="text-xs text-[#7b8c9f]">Register user and set initial balance</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAddUserModalOpen(false)}
+                className="p-1 rounded-lg text-[#7b8c9f] hover:text-white"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-medium text-[#c0cbd8] mb-1">
+                  Full Name <span className="text-[#ff5a63]">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Tanvir Ahmed"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                  required
+                  className="w-full h-10 px-3 rounded-xl bg-[#080e18] border border-[#172537] text-white placeholder-[#5a6a7c] focus:outline-none focus:border-[#09c48d]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-medium text-[#c0cbd8] mb-1">
+                  Email Address <span className="text-[#ff5a63]">*</span>
+                </label>
+                <input
+                  type="email"
+                  placeholder="e.g. user@example.com"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  required
+                  className="w-full h-10 px-3 rounded-xl bg-[#080e18] border border-[#172537] text-white placeholder-[#5a6a7c] focus:outline-none focus:border-[#09c48d]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-[#c0cbd8] mb-1">
+                    Login Password
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="123456"
+                    value={newUserPassword}
+                    onChange={(e) => setNewUserPassword(e.target.value)}
+                    className="w-full h-10 px-3 rounded-xl bg-[#080e18] border border-[#172537] text-white placeholder-[#5a6a7c] focus:outline-none focus:border-[#09c48d]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium text-[#c0cbd8] mb-1">
+                    Initial Balance (USDT)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="0.00"
+                    value={newUserBalance}
+                    onChange={(e) => setNewUserBalance(e.target.value)}
+                    className="w-full h-10 px-3 rounded-xl bg-[#080e18] border border-[#172537] text-white font-mono placeholder-[#5a6a7c] focus:outline-none focus:border-[#09c48d]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-[#c0cbd8] mb-1">
+                    Phone (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="+880..."
+                    value={newUserPhone}
+                    onChange={(e) => setNewUserPhone(e.target.value)}
+                    className="w-full h-10 px-3 rounded-xl bg-[#080e18] border border-[#172537] text-white placeholder-[#5a6a7c] focus:outline-none focus:border-[#09c48d]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium text-[#c0cbd8] mb-1">
+                    Referral Code (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. VTX8829"
+                    value={newUserInviteCode}
+                    onChange={(e) => setNewUserInviteCode(e.target.value.toUpperCase())}
+                    className="w-full h-10 px-3 rounded-xl bg-[#080e18] border border-[#172537] text-white font-mono uppercase placeholder-[#5a6a7c] focus:outline-none focus:border-[#09c48d]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-3">
+              <button
+                type="button"
+                onClick={() => setAddUserModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-[#142337] hover:bg-[#1a2e47] text-white text-xs font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isCreatingUser}
+                className="flex-1 py-2.5 rounded-xl bg-[#09c48d] hover:bg-[#0bd69a] text-[#04140e] text-xs font-bold transition-all shadow-md disabled:opacity-50"
+              >
+                {isCreatingUser ? "Creating..." : "Create Account"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: SUPABASE SQL SETUP & FIX */}
+      {/* ============================================================== */}
+      {dbModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in-50">
+          <div className="w-full max-w-lg rounded-2xl bg-[#0d1624] border border-[#1b2b3f] p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#18283a]">
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-lg bg-[#00d4ff]/10 text-[#00d4ff] grid place-items-center">
+                  <Activity className="size-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Supabase Cloud Sync Status</h3>
+                  <p className="text-xs text-[#7b8c9f]">bakbmhcoyaqsktzzglxr.supabase.co</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDbModalOpen(false)}
+                className="p-1 rounded-lg text-[#7b8c9f] hover:text-white"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[#c0cbd8] leading-relaxed">
+              To allow registered users from all mobile devices and browsers to instantly appear with their real names and receive admin balance, run this 1-click command in your <strong>Supabase SQL Editor</strong>:
+            </p>
+
+            <div className="relative rounded-xl bg-[#060b13] border border-[#172537] p-3.5 font-mono text-[11px] text-[#34cc9b] leading-relaxed select-all">
+              <pre className="whitespace-pre-wrap break-all">
+{`ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.withdrawals DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.deposits DISABLE ROW LEVEL SECURITY;`}
+              </pre>
+              <button
+                type="button"
+                onClick={() => {
+                  copyToClipboard(
+                    "ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;\nALTER TABLE public.withdrawals DISABLE ROW LEVEL SECURITY;\nALTER TABLE public.deposits DISABLE ROW LEVEL SECURITY;",
+                    "sql_copy"
+                  );
+                  showNotification("SQL script copied to clipboard!");
+                }}
+                className="absolute top-2.5 right-2.5 px-2 py-1 rounded bg-[#142337] hover:bg-[#1f334e] text-white text-[10px] font-sans flex items-center gap-1"
+              >
+                {copiedText === "sql_copy" ? (
+                  <>
+                    <Check className="size-3 text-[#09c48d]" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="size-3" />
+                    <span>Copy SQL</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-[#09c48d]/10 border border-[#09c48d]/20 text-[11px] text-[#09c48d] leading-relaxed">
+              ✓ Once executed, any customer signing up on any device will immediately show up in the User Management desk with their Full Name, Email, and Balance.
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setDbModalOpen(false)}
+              className="w-full py-2.5 rounded-xl bg-[#142337] hover:bg-[#1a2e47] text-white text-xs font-semibold transition-colors"
+            >
+              Done
+            </button>
           </div>
         </div>
       )}

@@ -98,15 +98,17 @@ export function getAdminUsers(): AdminUser[] {
           const firstName = acc.user_metadata?.first_name || acc.first_name || "";
           const lastName = acc.user_metadata?.last_name || acc.last_name || "";
           const name = (
-            acc.user_metadata?.full_name ||
+            acc.name ||
             acc.full_name ||
+            acc.user_metadata?.full_name ||
             `${firstName} ${lastName}`.trim() ||
             email.split("@")[0] ||
-            "Vertex Member"
+            "Registered Member"
           ).trim();
 
           const inviteCode =
             acc.user_metadata?.my_invite_code ||
+            acc.invite_code ||
             acc.my_invite_code ||
             getUserInviteCode(acc);
 
@@ -132,6 +134,37 @@ export function getAdminUsers(): AdminUser[] {
             referred_by: referredBy,
             invite_code: inviteCode,
           });
+        });
+      }
+    }
+  } catch {}
+
+  // Also read stored admin users from vx_admin_users
+  try {
+    const rawAdmin = localStorage.getItem(STORAGE_USERS);
+    if (rawAdmin) {
+      const parsed = JSON.parse(rawAdmin);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((u: any) => {
+          if (!u || (!u.email && !u.id)) return;
+          const id = u.id || `usr_${u.email}`;
+          if (!usersMap.has(id)) {
+            usersMap.set(id, {
+              id,
+              name: u.name || u.full_name || u.email?.split("@")[0] || "Registered User",
+              email: u.email,
+              phone: u.phone || "—",
+              balance: Number(u.balance || 0),
+              frozen_balance: Number(u.frozen_balance ?? 20.0),
+              total_deposit: Number(u.total_deposit || 0),
+              total_withdraw: Number(u.total_withdraw || 0),
+              created_at: u.created_at || new Date().toISOString(),
+              status: u.status === "blocked" ? "blocked" : "active",
+              role: u.role || "user",
+              referred_by: u.referred_by || null,
+              invite_code: u.invite_code || "VTX8829",
+            });
+          }
         });
       }
     }
@@ -209,9 +242,102 @@ export function getAdminUsers(): AdminUser[] {
   );
 }
 
+export async function createAdminUser(userData: {
+  name: string;
+  email: string;
+  password?: string;
+  balance?: number;
+  phone?: string;
+  invite_code?: string;
+  referred_by?: string;
+}): Promise<AdminUser> {
+  const cleanEmail = userData.email.trim().toLowerCase();
+  const cleanName = userData.name.trim() || cleanEmail.split("@")[0] || "Registered User";
+  const initialBalance = Number(userData.balance || 0);
+  const now = new Date().toISOString();
+  const userId = "usr_" + Math.random().toString(36).slice(2, 9);
+  const inviteCode = userData.invite_code?.trim().toUpperCase() || "VTX" + Math.floor(1000 + Math.random() * 9000);
+
+  const newUser: AdminUser = {
+    id: userId,
+    name: cleanName,
+    email: cleanEmail,
+    phone: userData.phone?.trim() || "—",
+    balance: initialBalance,
+    frozen_balance: 20.0,
+    total_deposit: 0,
+    total_withdraw: 0,
+    created_at: now,
+    status: "active",
+    role: "user",
+    referred_by: userData.referred_by?.trim().toUpperCase() || null,
+    invite_code: inviteCode,
+  };
+
+  // 1. Save to vx_admin_users
+  try {
+    const rawAdmin = localStorage.getItem(STORAGE_USERS);
+    const list: AdminUser[] = rawAdmin ? JSON.parse(rawAdmin) : [];
+    const existingIdx = list.findIndex(u => u.email.toLowerCase() === cleanEmail);
+    if (existingIdx >= 0) {
+      list[existingIdx] = newUser;
+    } else {
+      list.unshift(newUser);
+    }
+    localStorage.setItem(STORAGE_USERS, JSON.stringify(list));
+  } catch {}
+
+  // 2. Save to vx-accounts so user can log in with password
+  try {
+    const rawAcc = localStorage.getItem("vx-accounts");
+    const accList = rawAcc ? JSON.parse(rawAcc) : [];
+    const accIdx = accList.findIndex((a: any) => a.email?.toLowerCase() === cleanEmail);
+    const accRecord = {
+      id: userId,
+      name: cleanName,
+      full_name: cleanName,
+      email: cleanEmail,
+      password: userData.password || "123456",
+      balance: initialBalance,
+      created_at: now,
+      my_invite_code: inviteCode,
+      referred_by: newUser.referred_by,
+      user_metadata: {
+        full_name: cleanName,
+        my_invite_code: inviteCode,
+        referred_by: newUser.referred_by,
+      },
+    };
+    if (accIdx >= 0) {
+      accList[accIdx] = accRecord;
+    } else {
+      accList.push(accRecord);
+    }
+    localStorage.setItem("vx-accounts", JSON.stringify(accList));
+  } catch {}
+
+  // 3. Attempt insertion into Supabase
+  try {
+    await supabase.from("users").insert({
+      name: cleanName,
+      email: cleanEmail,
+      phone: newUser.phone,
+      balance: initialBalance,
+      total_deposit: 0,
+      total_withdraw: 0,
+      status: "active",
+      role: "user",
+      invite_code: inviteCode,
+      created_at: now,
+    });
+  } catch {}
+
+  return newUser;
+}
+
 /**
  * Async query that fetches live users from Supabase and merges with local storage.
- * Ensures the admin panel on Vercel sees users registered on any device!
+ * Ensures the admin panel sees users registered on any device with their real names!
  */
 export async function fetchAdminUsersAsync(): Promise<AdminUser[]> {
   const localList = getAdminUsers();
@@ -223,21 +349,30 @@ export async function fetchAdminUsersAsync(): Promise<AdminUser[]> {
     if (!error && Array.isArray(dbUsers)) {
       dbUsers.forEach((row: any) => {
         if (!row || (!row.email && !row.id)) return;
-        const id = row.id || `usr_${row.email}`;
+        const id = row.id ? String(row.id) : `usr_${row.email}`;
+        const name = (
+          row.name ||
+          row.full_name ||
+          row.user_metadata?.full_name ||
+          (row.first_name ? `${row.first_name} ${row.last_name || ""}`.trim() : null) ||
+          row.email?.split("@")[0] ||
+          "Registered User"
+        ).trim();
+
         usersMap.set(id, {
           id,
-          name: row.full_name || row.email?.split("@")[0] || "Vertex Member",
+          name,
           email: row.email,
           phone: row.phone || "—",
           balance: Number(row.balance || 0),
           frozen_balance: Number(row.frozen_balance ?? 20.0),
-          total_deposit: Number(row.total_deposited || 0),
-          total_withdraw: Number(row.total_withdrawn || 0),
+          total_deposit: Number(row.total_deposit ?? row.total_deposited ?? 0),
+          total_withdraw: Number(row.total_withdraw ?? row.total_withdrawn ?? 0),
           created_at: row.created_at || new Date().toISOString(),
           status: row.status === "blocked" ? "blocked" : "active",
           role: row.role || "user",
           referred_by: row.referred_by || null,
-          invite_code: row.referral_code || "VTX8829",
+          invite_code: row.invite_code || row.referral_code || "VTX8829",
         });
       });
     }
@@ -304,16 +439,44 @@ export function toggleUserStatus(userId: string): AdminUser[] {
 export function adjustUserBalance(userId: string, amountDelta: number, note: string = "Admin Adjustment"): AdminUser[] {
   if (typeof window === "undefined") return [];
 
-  // Update in vx-accounts
+  let targetEmail = "";
+  let targetName = "Registered User";
+  let finalBalance = 0;
+
+  // 1. Update in vx_admin_users
+  try {
+    const rawAdmin = localStorage.getItem(STORAGE_USERS);
+    if (rawAdmin) {
+      const list = JSON.parse(rawAdmin);
+      if (Array.isArray(list)) {
+        const updated = list.map((u: any) => {
+          if (u.id === userId || (targetEmail && u.email?.toLowerCase() === targetEmail.toLowerCase())) {
+            targetEmail = u.email;
+            targetName = u.name || targetName;
+            const current = Number(u.balance || 0);
+            finalBalance = Math.max(0, Number((current + amountDelta).toFixed(2)));
+            return { ...u, balance: finalBalance };
+          }
+          return u;
+        });
+        localStorage.setItem(STORAGE_USERS, JSON.stringify(updated));
+      }
+    }
+  } catch {}
+
+  // 2. Update in vx-accounts
   try {
     const raw = localStorage.getItem("vx-accounts");
     if (raw) {
       const accounts = JSON.parse(raw);
       if (Array.isArray(accounts)) {
         const updated = accounts.map((acc: any) => {
-          if (acc.id === userId) {
+          if (acc.id === userId || (targetEmail && acc.email?.toLowerCase() === targetEmail.toLowerCase())) {
+            targetEmail = acc.email || targetEmail;
+            targetName = acc.name || acc.full_name || targetName;
             const current = Number(acc.balance || 0);
-            return { ...acc, balance: Math.max(0, current + amountDelta) };
+            finalBalance = Math.max(0, Number((current + amountDelta).toFixed(2)));
+            return { ...acc, balance: finalBalance };
           }
           return acc;
         });
@@ -322,12 +485,12 @@ export function adjustUserBalance(userId: string, amountDelta: number, note: str
     }
   } catch {}
 
-  // Update if current session user
+  // 3. Update if current session user
   try {
     const currRaw = localStorage.getItem("vx-mock-user");
     if (currRaw) {
       const curr = JSON.parse(currRaw);
-      if (curr && curr.id === userId) {
+      if (curr && (curr.id === userId || (targetEmail && curr.email?.toLowerCase() === targetEmail.toLowerCase()))) {
         const rawWallet = localStorage.getItem("vertex-test-account-v2") || localStorage.getItem("vertex-test-account-v1");
         if (rawWallet) {
           const w = JSON.parse(rawWallet);
@@ -337,7 +500,7 @@ export function adjustUserBalance(userId: string, amountDelta: number, note: str
             id: "adj_" + Date.now(),
             type: amountDelta >= 0 ? "deposit" : "withdraw",
             amount: Math.abs(amountDelta),
-            note: note || "Admin wallet adjustment",
+            note: note || "Admin wallet balance credit",
             timestamp: new Date().toISOString(),
           });
           localStorage.setItem("vertex-test-account-v2", JSON.stringify(w));
@@ -346,12 +509,12 @@ export function adjustUserBalance(userId: string, amountDelta: number, note: str
     }
   } catch {}
 
-  // Sync to Supabase users table
+  // 4. Sync to Supabase users table by email
   try {
     const users = getAdminUsers();
-    const u = users.find(x => x.id === userId);
-    if (u) {
-      void supabase.from("users").update({ balance: u.balance }).eq("id", userId);
+    const u = users.find(x => x.id === userId || (targetEmail && x.email?.toLowerCase() === targetEmail.toLowerCase()));
+    if (u && u.email) {
+      void supabase.from("users").update({ balance: u.balance }).eq("email", u.email);
     }
   } catch {}
 

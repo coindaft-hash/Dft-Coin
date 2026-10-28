@@ -178,8 +178,14 @@ function RegisterPage() {
         const raw = localStorage.getItem("vx-accounts");
         const accounts = raw ? JSON.parse(raw) : [];
         const existingIdx = accounts.findIndex((a: any) => a.email?.toLowerCase() === cleanEmail);
+        const fullName = `${parsed.data.firstName} ${parsed.data.lastName}`.trim();
         const record = {
           ...userRecord,
+          name: fullName,
+          full_name: fullName,
+          first_name: parsed.data.firstName,
+          last_name: parsed.data.lastName,
+          email: cleanEmail,
           password,
           created_at: new Date().toISOString(),
           my_invite_code: userOwnInviteCode,
@@ -191,7 +197,35 @@ function RegisterPage() {
           accounts.push(record);
         }
         localStorage.setItem("vx-accounts", JSON.stringify(accounts));
-        localStorage.setItem("vx-mock-user", JSON.stringify(userRecord));
+        localStorage.setItem("vx-mock-user", JSON.stringify(record));
+
+        // Sync directly to vx_admin_users so Admin sees the user and name immediately
+        try {
+          const rawAdmin = localStorage.getItem("vx_admin_users");
+          const adminList = rawAdmin ? JSON.parse(rawAdmin) : [];
+          const adminUser = {
+            id: userRecord.id,
+            name: fullName,
+            email: cleanEmail,
+            phone: "—",
+            balance: 0.0,
+            frozen_balance: 20.0,
+            total_deposit: 0.0,
+            total_withdraw: 0.0,
+            created_at: record.created_at,
+            status: "active" as const,
+            role: "user" as const,
+            referred_by: trimmedInvite || null,
+            invite_code: userOwnInviteCode,
+          };
+          const existingAdminIdx = adminList.findIndex((u: any) => u.email?.toLowerCase() === cleanEmail);
+          if (existingAdminIdx >= 0) {
+            adminList[existingAdminIdx] = adminUser;
+          } else {
+            adminList.unshift(adminUser);
+          }
+          localStorage.setItem("vx_admin_users", JSON.stringify(adminList));
+        } catch {}
 
         // Record referral connection to inviter's team
         recordReferralSignup({
@@ -210,18 +244,13 @@ function RegisterPage() {
         // Also sync directly to Supabase users table for cloud visibility
         try {
           void supabase.from("users").upsert({
-            id: userRecord.id,
-            full_name: `${parsed.data.firstName} ${parsed.data.lastName}`.trim(),
+            name: fullName,
             email: cleanEmail,
-            balance: 0.00,
-            frozen_balance: 20.00,
-            total_deposited: 0.00,
-            total_withdrawn: 0.00,
-            referred_by: trimmedInvite || null,
-            referral_code: userOwnInviteCode,
+            balance: 0.0,
             status: "active",
             role: "user",
-            created_at: new Date().toISOString(),
+            invite_code: userOwnInviteCode,
+            created_at: record.created_at,
           }, { onConflict: "email" });
         } catch {}
       } catch {}
@@ -302,11 +331,55 @@ function RegisterPage() {
         const raw = localStorage.getItem("vx-accounts");
         const accounts = raw ? JSON.parse(raw) : [];
         const existingIdx = accounts.findIndex((a: any) => a.email?.toLowerCase() === cleanEmail);
-        const record = { ...userRecord, password, created_at: new Date().toISOString() };
+        const resolvedName = (
+          `${firstName} ${lastName}`.trim() ||
+          userRecord.user_metadata?.full_name ||
+          userRecord.full_name ||
+          cleanEmail.split("@")[0] ||
+          "Member"
+        );
+        const record = {
+          ...userRecord,
+          name: resolvedName,
+          full_name: resolvedName,
+          first_name: firstName,
+          last_name: lastName,
+          password,
+          created_at: new Date().toISOString(),
+        };
         if (existingIdx >= 0) accounts[existingIdx] = record;
         else accounts.push(record);
         localStorage.setItem("vx-accounts", JSON.stringify(accounts));
-        localStorage.setItem("vx-mock-user", JSON.stringify(userRecord));
+        localStorage.setItem("vx-mock-user", JSON.stringify(record));
+
+        // Sync to vx_admin_users
+        try {
+          const rawAdmin = localStorage.getItem("vx_admin_users");
+          const adminList = rawAdmin ? JSON.parse(rawAdmin) : [];
+          const adminUser = {
+            id: userRecord.id,
+            name: resolvedName,
+            email: cleanEmail,
+            phone: "—",
+            balance: 0.0,
+            frozen_balance: 20.0,
+            total_deposit: 0.0,
+            total_withdraw: 0.0,
+            created_at: record.created_at,
+            status: "active" as const,
+            role: "user" as const,
+            referred_by: invite.trim().toUpperCase() || null,
+            invite_code: userRecord.user_metadata?.my_invite_code || "VTX8829",
+          };
+          const existingAdminIdx = adminList.findIndex((u: any) => u.email?.toLowerCase() === cleanEmail);
+          if (existingAdminIdx >= 0) {
+            adminList[existingAdminIdx] = adminUser;
+          } else {
+            adminList.unshift(adminUser);
+          }
+          localStorage.setItem("vx_admin_users", JSON.stringify(adminList));
+        } catch {}
+
         localStorage.setItem("vertex-test-account-v2", JSON.stringify({ balance: 0, positions: [], history: [], lastOpenedId: null }));
         localStorage.removeItem("vertex-test-account-v1");
         resetTrialFundForNewUser();
@@ -314,18 +387,13 @@ function RegisterPage() {
         // Sync verified user to Supabase
         try {
           void supabase.from("users").upsert({
-            id: userRecord.id,
-            full_name: `${firstName} ${lastName}`.trim() || cleanEmail.split("@")[0],
+            name: resolvedName,
             email: cleanEmail,
-            balance: 0.00,
-            frozen_balance: 20.00,
-            total_deposited: 0.00,
-            total_withdrawn: 0.00,
-            referred_by: invite.trim().toUpperCase() || null,
-            referral_code: userRecord.user_metadata?.my_invite_code || userRecord.user_metadata?.invite_code || "VTX8829",
+            balance: 0.0,
             status: "active",
             role: "user",
-            created_at: new Date().toISOString(),
+            invite_code: userRecord.user_metadata?.my_invite_code || "VTX8829",
+            created_at: record.created_at,
           }, { onConflict: "email" });
         } catch {}
       } catch {}
