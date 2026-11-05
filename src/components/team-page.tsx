@@ -104,138 +104,214 @@ function CodeCard({ code, saved, onSave }: { code: string; saved: boolean; onSav
 }
 
 export function RechargeCommissionCard() {
-  const tiers = [
-    {
-      level: "A",
-      title: "Level 1 (Direct)",
-      bengali: "১ম লেভেল",
-      rate: "5%",
-      desc: "Direct invitations",
-      example: "$100 = +$5.00",
-      borderTone: "border-emerald-500/40 bg-gradient-to-b from-emerald-500/15 via-emerald-500/5 to-transparent",
-      badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
-      accentDot: "bg-emerald-400 shadow-[0_0_8px_#34d399]",
-    },
-    {
-      level: "B",
-      title: "Level 2 (Tier 2)",
-      bengali: "২য় লেভেল",
-      rate: "3%",
-      desc: "2nd step downline",
-      example: "$100 = +$3.00",
-      borderTone: "border-cyan-500/40 bg-gradient-to-b from-cyan-500/15 via-cyan-500/5 to-transparent",
-      badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
-      accentDot: "bg-cyan-400 shadow-[0_0_8px_#22d3ee]",
-    },
-    {
-      level: "C",
-      title: "Level 3 (Tier 3)",
-      bengali: "৩য় লেভেল",
-      rate: "2%",
-      desc: "3rd step downline",
-      example: "$100 = +$2.00",
-      borderTone: "border-amber-500/40 bg-gradient-to-b from-amber-500/15 via-amber-500/5 to-transparent",
-      badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-      accentDot: "bg-amber-400 shadow-[0_0_8px_#fbbf24]",
-    },
-    {
-      level: "D",
-      title: "Level 4 (Tier 4)",
-      bengali: "৪র্থ লেভেল",
-      rate: "1%",
-      desc: "4th step downline",
-      example: "$100 = +$1.00",
-      borderTone: "border-purple-500/40 bg-gradient-to-b from-purple-500/15 via-purple-500/5 to-transparent",
-      badgeColor: "bg-purple-500/20 text-purple-300 border-purple-500/40",
-      accentDot: "bg-purple-400 shadow-[0_0_8px_#c084fc]",
-    },
-  ];
-
   return (
-    <section className="mt-5 overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-[#0b1623] via-[#08101a] to-[#040810] p-4 shadow-xl shadow-primary/5 space-y-3.5">
-      {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-border/60">
-        <div className="flex items-center gap-2.5">
-          <div className="relative grid size-10 place-items-center rounded-xl bg-gradient-to-tr from-primary to-emerald-500 text-primary-foreground shadow-lg shadow-primary/25">
-            <Percent className="size-5 font-black" />
-            <span className="absolute -top-1 -right-1 flex size-2.5">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
-            </span>
+    <section
+      className="mt-5 relative w-full overflow-hidden text-white font-['Hind_Siliguri','Inter',sans-serif]"
+      style={{
+        borderRadius: "28px",
+        padding: "24px 20px 22px",
+        background: `
+          radial-gradient(900px 400px at 0% 100%, rgba(25, 230, 140, .28), transparent 60%),
+          radial-gradient(700px 360px at 100% 0%, rgba(25, 230, 140, .16), transparent 60%),
+          linear-gradient(160deg, #081a2e 0%, #050d1c 60%, #06141f 100%)
+        `,
+        boxShadow: "0 0 0 3px rgba(25, 230, 140, .9), 0 0 40px rgba(25, 230, 140, .35), inset 0 0 60px rgba(25, 230, 140, .08)",
+      }}
+    >
+      {/* Header with left icon, centered titlebox, right icon */}
+      <div className="flex items-center justify-between gap-3">
+        {/* Left 3D Coin Graphic */}
+        <div className="shrink-0 w-14 sm:w-20" style={{ filter: "drop-shadow(0 8px 18px rgba(0,0,0,.45))" }}>
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
+            <defs>
+              <linearGradient id="goldGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ffe600" />
+                <stop offset="60%" stopColor="#f59e0b" />
+                <stop offset="100%" stopColor="#b45309" />
+              </linearGradient>
+              <linearGradient id="greenGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#34d399" />
+                <stop offset="100%" stopColor="#059669" />
+              </linearGradient>
+            </defs>
+            {/* Base Sack/Stack */}
+            <circle cx="50" cy="55" r="32" fill="url(#greenGrad1)" />
+            <ellipse cx="50" cy="38" rx="28" ry="12" fill="#10b981" />
+            {/* Gold Coins Stack */}
+            <ellipse cx="45" cy="48" rx="22" ry="8" fill="url(#goldGrad1)" stroke="#fef08a" strokeWidth="1.5" />
+            <ellipse cx="45" cy="42" rx="22" ry="8" fill="url(#goldGrad1)" stroke="#fef08a" strokeWidth="1.5" />
+            <ellipse cx="45" cy="36" rx="22" ry="8" fill="url(#goldGrad1)" stroke="#fef08a" strokeWidth="1.5" />
+            <ellipse cx="58" cy="32" rx="18" ry="7" fill="url(#goldGrad1)" stroke="#fef08a" strokeWidth="1.5" />
+            <circle cx="58" cy="32" r="8" fill="#f59e0b" opacity="0.6" />
+            <text x="55" y="36" fontSize="11" fontWeight="bold" fill="#fff" fontFamily="monospace">$</text>
+            {/* Sparkles */}
+            <polygon points="22,24 25,18 28,24 34,27 28,30 25,36 22,30 16,27" fill="#ffe600" />
+            <polygon points="76,46 78,42 80,46 84,48 80,50 78,54 76,50 72,48" fill="#19e68c" />
+          </svg>
+        </div>
+
+        {/* Center Titlebox */}
+        <div className="flex-1 text-center min-w-0">
+          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#19e68c]/15 border border-[#19e68c]/40 text-[#19e68c] text-[10px] sm:text-xs font-bold uppercase tracking-widest mb-1">
+            <span className="size-1.5 rounded-full bg-[#19e68c] animate-pulse" />
+            Team Referral
           </div>
+          <h2 className="m-0 font-extrabold text-2xl sm:text-4xl tracking-tight leading-tight text-white drop-shadow">
+            REFERRAL <span style={{ color: "#19e68c" }}>COMMISSION</span>
+          </h2>
+          <p className="mt-1 text-xs sm:text-sm font-medium text-[#dbe6f2] max-w-md mx-auto leading-snug">
+            টিমের প্রতিটি রিচার্জের উপর ৪ স্তরের আকর্ষণীয় কমিশন পান
+          </p>
+        </div>
+
+        {/* Right 3D Trophy / Emblem Graphic */}
+        <div className="shrink-0 w-12 sm:w-16" style={{ filter: "drop-shadow(0 8px 18px rgba(0,0,0,.45))" }}>
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
+            <defs>
+              <linearGradient id="goldCup" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#fffbeb" />
+                <stop offset="30%" stopColor="#fde047" />
+                <stop offset="70%" stopColor="#eab308" />
+                <stop offset="100%" stopColor="#854d0e" />
+              </linearGradient>
+            </defs>
+            {/* Trophy Pedestal */}
+            <rect x="36" y="74" width="28" height="12" rx="3" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+            <rect x="42" y="62" width="16" height="14" fill="#334155" />
+            {/* Cup Body */}
+            <path d="M26 22 L74 22 C74 46 62 62 50 62 C38 62 26 46 26 22 Z" fill="url(#goldCup)" stroke="#fef08a" strokeWidth="1.5" />
+            {/* Handles */}
+            <path d="M26 26 C14 26 14 44 28 44" stroke="#fde047" strokeWidth="3" strokeLinecap="round" fill="none" />
+            <path d="M74 26 C86 26 86 44 72 44" stroke="#fde047" strokeWidth="3" strokeLinecap="round" fill="none" />
+            {/* Star on Cup */}
+            <polygon points="50,30 52,36 58,36 53,40 55,46 50,42 45,46 47,40 42,36 48,36" fill="#fff" />
+            {/* Sparkles */}
+            <polygon points="78,16 80,12 82,16 86,18 82,20 80,24 78,20 74,18" fill="#ffe600" />
+          </svg>
+        </div>
+      </div>
+
+      {/* 4 Tiers Grid */}
+      <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        {/* Level 1: 5% */}
+        <div
+          className="rounded-2xl p-3 text-center flex flex-col justify-between transition-transform duration-200 hover:scale-[1.02]"
+          style={{
+            background: "linear-gradient(180deg, rgba(8, 26, 46, 0.95) 0%, rgba(5, 13, 28, 0.95) 100%)",
+            border: "2px solid #19e68c",
+            boxShadow: "0 0 20px rgba(25, 230, 140, 0.28)",
+          }}
+        >
           <div>
-            <div className="flex items-center gap-1.5">
-              <h2 className="text-sm font-extrabold tracking-tight text-white">Recharge Commission</h2>
-              <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-                4 Tiers
-              </span>
+            <span className="inline-block rounded-full bg-[#19e68c]/20 border border-[#19e68c]/40 px-2 py-0.5 text-[10px] font-bold text-[#19e68c] uppercase tracking-wider">
+              Level 1 · ১ম লেভেল
+            </span>
+            <div
+              className="mt-2 text-3xl sm:text-4xl font-black font-mono tracking-tight"
+              style={{ color: "#19e68c", filter: "drop-shadow(0 0 10px rgba(25, 230, 140, 0.5))" }}
+            >
+              5%
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Commissions are earned when team members recharge
-            </p>
+            <p className="mt-0.5 text-[11px] font-semibold text-white/90">Direct Referral</p>
+          </div>
+          <div className="mt-2.5 pt-2 border-t border-white/10 text-[10px] font-mono text-[#ffe600] font-bold">
+            $100 = +$5.00
+          </div>
+        </div>
+
+        {/* Level 2: 3% */}
+        <div
+          className="rounded-2xl p-3 text-center flex flex-col justify-between transition-transform duration-200 hover:scale-[1.02]"
+          style={{
+            background: "linear-gradient(180deg, rgba(8, 26, 46, 0.95) 0%, rgba(5, 13, 28, 0.95) 100%)",
+            border: "1.5px solid rgba(255, 230, 0, 0.75)",
+            boxShadow: "0 0 16px rgba(255, 230, 0, 0.2)",
+          }}
+        >
+          <div>
+            <span className="inline-block rounded-full bg-[#ffe600]/20 border border-[#ffe600]/40 px-2 py-0.5 text-[10px] font-bold text-[#ffe600] uppercase tracking-wider">
+              Level 2 · ২য় লেভেল
+            </span>
+            <div
+              className="mt-2 text-3xl sm:text-4xl font-black font-mono tracking-tight"
+              style={{ color: "#ffe600", filter: "drop-shadow(0 0 10px rgba(255, 230, 0, 0.45))" }}
+            >
+              3%
+            </div>
+            <p className="mt-0.5 text-[11px] font-semibold text-white/90">2nd Tier</p>
+          </div>
+          <div className="mt-2.5 pt-2 border-t border-white/10 text-[10px] font-mono text-[#ffe600] font-bold">
+            $100 = +$3.00
+          </div>
+        </div>
+
+        {/* Level 3: 2% */}
+        <div
+          className="rounded-2xl p-3 text-center flex flex-col justify-between transition-transform duration-200 hover:scale-[1.02]"
+          style={{
+            background: "linear-gradient(180deg, rgba(8, 26, 46, 0.95) 0%, rgba(5, 13, 28, 0.95) 100%)",
+            border: "1.5px solid rgba(0, 212, 255, 0.75)",
+            boxShadow: "0 0 16px rgba(0, 212, 255, 0.2)",
+          }}
+        >
+          <div>
+            <span className="inline-block rounded-full bg-[#00d4ff]/20 border border-[#00d4ff]/40 px-2 py-0.5 text-[10px] font-bold text-[#00d4ff] uppercase tracking-wider">
+              Level 3 · ৩য় লেভেল
+            </span>
+            <div
+              className="mt-2 text-3xl sm:text-4xl font-black font-mono tracking-tight"
+              style={{ color: "#00d4ff", filter: "drop-shadow(0 0 10px rgba(0, 212, 255, 0.45))" }}
+            >
+              2%
+            </div>
+            <p className="mt-0.5 text-[11px] font-semibold text-white/90">3rd Tier</p>
+          </div>
+          <div className="mt-2.5 pt-2 border-t border-white/10 text-[10px] font-mono text-[#ffe600] font-bold">
+            $100 = +$2.00
+          </div>
+        </div>
+
+        {/* Level 4: 1% */}
+        <div
+          className="rounded-2xl p-3 text-center flex flex-col justify-between transition-transform duration-200 hover:scale-[1.02]"
+          style={{
+            background: "linear-gradient(180deg, rgba(8, 26, 46, 0.95) 0%, rgba(5, 13, 28, 0.95) 100%)",
+            border: "1.5px solid rgba(192, 132, 252, 0.75)",
+            boxShadow: "0 0 16px rgba(192, 132, 252, 0.2)",
+          }}
+        >
+          <div>
+            <span className="inline-block rounded-full bg-[#c084fc]/20 border border-[#c084fc]/40 px-2 py-0.5 text-[10px] font-bold text-[#c084fc] uppercase tracking-wider">
+              Level 4 · ৪র্থ লেভেল
+            </span>
+            <div
+              className="mt-2 text-3xl sm:text-4xl font-black font-mono tracking-tight"
+              style={{ color: "#c084fc", filter: "drop-shadow(0 0 10px rgba(192, 132, 252, 0.45))" }}
+            >
+              1%
+            </div>
+            <p className="mt-0.5 text-[11px] font-semibold text-white/90">4th Tier</p>
+          </div>
+          <div className="mt-2.5 pt-2 border-t border-white/10 text-[10px] font-mono text-[#ffe600] font-bold">
+            $100 = +$1.00
           </div>
         </div>
       </div>
 
-      {/* 4 Cards Grid */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {tiers.map(t => (
-          <div
-            key={t.level}
-            className={`group relative overflow-hidden rounded-xl border ${t.borderTone} p-3 flex flex-col justify-between transition-all duration-200 hover:border-opacity-80`}
-          >
-            <div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className={`size-1.5 rounded-full ${t.accentDot}`} />
-                  <span className="text-xs font-bold text-white tracking-wide">
-                    Level {t.level}
-                  </span>
-                </div>
-                <span className={`rounded-md border px-1.5 py-0.5 font-mono text-xs font-black ${t.badgeColor}`}>
-                  {t.rate}
-                </span>
-              </div>
-              <p className="mt-1 text-[10px] text-muted-foreground">{t.bengali} · {t.desc}</p>
-            </div>
-
-            <div className="mt-3 pt-2 border-t border-border/40 flex items-center justify-between text-[10px]">
-              <span className="text-muted-foreground">Per $100</span>
-              <span className="font-mono font-bold text-white">
-                {t.example.split("= ")[1]}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Explanatory Policy Box */}
-      <div className="rounded-xl bg-black/40 border border-border/60 p-3 space-y-1.5 text-[11px]">
-        <div className="flex items-center gap-1.5 text-primary font-semibold text-xs">
-          <Zap className="size-3.5 text-primary" />
-          <span>কমিশন পাওয়ার নিয়ম (Commission Rule)</span>
+      {/* Bottom Commission Policy Note */}
+      <div
+        className="mt-4 rounded-xl p-3 flex items-start gap-2.5 text-xs text-[#dbe6f2] leading-relaxed"
+        style={{
+          background: "rgba(5, 11, 22, 0.75)",
+          border: "1px solid rgba(25, 230, 140, 0.35)",
+        }}
+      >
+        <div className="size-5 rounded-full bg-[#19e68c]/20 text-[#19e68c] grid place-items-center font-bold text-xs shrink-0 mt-0.5">
+          ✓
         </div>
-        <p className="text-muted-foreground leading-relaxed">
-          • আপনার টিমের কোনো মেম্বার যখনই একাউন্টে ফান্ড রিচার্জ বা ডিপোজিট করবে, আপনি সাথে সাথে তার রিচার্জের উপর কমিশন পাবেন:
-        </p>
-        <div className="grid grid-cols-2 gap-1.5 pt-1 font-mono text-[11px]">
-          <div className="flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
-            <span>১ম লেভেল:</span> <strong className="font-bold">৫%</strong>
-          </div>
-          <div className="flex items-center gap-1.5 text-cyan-400 bg-cyan-500/10 px-2 py-1 rounded border border-cyan-500/20">
-            <span>২য় লেভেল:</span> <strong className="font-bold">৩%</strong>
-          </div>
-          <div className="flex items-center gap-1.5 text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
-            <span>৩য় লেভেল:</span> <strong className="font-bold">২%</strong>
-          </div>
-          <div className="flex items-center gap-1.5 text-purple-400 bg-purple-500/10 px-2 py-1 rounded border border-purple-500/20">
-            <span>৪র্থ লেভেল:</span> <strong className="font-bold">১%</strong>
-          </div>
+        <div>
+          <strong className="text-[#19e68c]">কমিশন পাওয়ার নিয়ম:</strong> টিমের মেম্বাররা একাউন্টে ফান্ড রিচার্জ বা ডিপোজিট করলে সাথে সাথে তার উপর ৫%, ৩%, ২%, ১% কমিশন স্বয়ংক্রিয়ভাবে আপনার একাউন্ট ব্যালেন্সে যুক্ত হবে।
         </div>
-        <p className="text-[10px] text-muted-foreground pt-1 flex items-center gap-1 text-emerald-400">
-          <Sparkles className="size-3 shrink-0" />
-          <span>ডিপোজিট অ্যাপ্রুভ হওয়ার সাথে সাথে ব্যালেন্সে কমিশন স্বয়ংক্রিয়ভাবে যোগ হবে।</span>
-        </p>
       </div>
     </section>
   );
