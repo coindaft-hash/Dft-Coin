@@ -1,0 +1,37 @@
+CREATE TYPE public.app_role AS ENUM ('admin', 'user');
+CREATE TABLE public.user_roles (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL, role public.app_role NOT NULL, UNIQUE(user_id, role));
+GRANT SELECT ON public.user_roles TO authenticated;
+GRANT ALL ON public.user_roles TO service_role;
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY own_roles ON public.user_roles FOR SELECT TO authenticated USING (user_id = auth.uid());
+CREATE FUNCTION public.has_role(_user_id uuid, _role public.app_role) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$ SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role) $$;
+REVOKE ALL ON FUNCTION public.has_role(uuid, public.app_role) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.has_role(uuid, public.app_role) TO authenticated;
+CREATE TABLE public.daft_quote (symbol text PRIMARY KEY CHECK (symbol = 'DAFT'), price numeric(20,8) NOT NULL CHECK(price > 0 AND price <= 1000000), baseline_price numeric(20,8) NOT NULL CHECK(baseline_price > 0), baseline_at timestamptz NOT NULL DEFAULT now(), trend text NOT NULL DEFAULT 'neutral' CHECK(trend IN ('up','down','neutral')), updated_at timestamptz NOT NULL DEFAULT now(), version integer NOT NULL DEFAULT 0);
+GRANT SELECT ON public.daft_quote TO anon, authenticated;
+GRANT ALL ON public.daft_quote TO service_role;
+ALTER TABLE public.daft_quote ENABLE ROW LEVEL SECURITY;
+CREATE POLICY public_simulated_quote ON public.daft_quote FOR SELECT TO anon, authenticated USING (symbol = 'DAFT');
+CREATE TABLE public.daft_price_events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), price numeric(20,8) NOT NULL, action text NOT NULL, actor_id uuid NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+GRANT SELECT ON public.daft_price_events TO authenticated;
+GRANT ALL ON public.daft_price_events TO service_role;
+ALTER TABLE public.daft_price_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY admins_read_events ON public.daft_price_events FOR SELECT TO authenticated USING(public.has_role(auth.uid(), 'admin'));
+INSERT INTO public.daft_quote(symbol, price, baseline_price) VALUES ('DAFT', 1, 1);
+CREATE FUNCTION public.update_daft_quote(_action text, _price numeric DEFAULT NULL, _trend text DEFAULT 'neutral') RETURNS SETOF public.daft_quote LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE q public.daft_quote; p numeric; t text;
+BEGIN
+IF auth.uid() IS NULL OR NOT public.has_role(auth.uid(), 'admin') THEN RAISE EXCEPTION 'Admin access required'; END IF;
+IF _action NOT IN ('pump','dump','set') OR _trend NOT IN ('up','down','neutral') THEN RAISE EXCEPTION 'Invalid action or trend'; END IF;
+SELECT * INTO q FROM public.daft_quote WHERE symbol = 'DAFT' FOR UPDATE;
+IF q.version > 0 AND q.updated_at > now() - interval '1 second' THEN RAISE EXCEPTION 'Please wait before updating again'; END IF;
+p := CASE _action WHEN 'pump' THEN q.price * 1.01 WHEN 'dump' THEN q.price * 0.99 ELSE _price END;
+t := CASE _action WHEN 'pump' THEN 'up' WHEN 'dump' THEN 'down' ELSE _trend END;
+IF p IS NULL OR p <= 0 OR p > 1000000 THEN RAISE EXCEPTION 'Price must be between 0 and 1000000'; END IF;
+UPDATE public.daft_quote SET price = p, trend = t, baseline_price = CASE WHEN baseline_at < now() - interval '24 hours' THEN q.price ELSE baseline_price END, baseline_at = CASE WHEN baseline_at < now() - interval '24 hours' THEN now() ELSE baseline_at END, updated_at = now(), version = version + 1 WHERE symbol = 'DAFT';
+INSERT INTO public.daft_price_events(price, action, actor_id) VALUES(p, _action, auth.uid());
+RETURN QUERY SELECT * FROM public.daft_quote WHERE symbol = 'DAFT';
+END $$;
+REVOKE ALL ON FUNCTION public.update_daft_quote(text,numeric,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.update_daft_quote(text,numeric,text) TO authenticated;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.daft_quote;

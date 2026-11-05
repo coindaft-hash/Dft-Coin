@@ -1,0 +1,90 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791739745839,
+      "tag": "0000_daftcoin_simulated_market",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791739964028,
+      "tag": "0001_restrict_daftcoin_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791744005066,
+      "tag": "0002_create_deposit_submissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791821142591,
+      "tag": "0003_wallet_transfers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791824423382,
+      "tag": "0004_invite_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791824767882,
+      "tag": "0005_add_founder_invite_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791825426102,
+      "tag": "0006_profile_withdrawals_ledger_team",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791828018408,
+      "tag": "0007_team_hierarchy_read_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791830635106,
+      "tag": "0008_team_withdrawals",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792094146960,
+      "tag": "0009_admin_panel",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792094862262,
+      "tag": "0010_admin_guard_service_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792167151839,
+      "tag": "0011_daft_trend_timer",
+      "breakpoints": true
+    }
+  ]
+}

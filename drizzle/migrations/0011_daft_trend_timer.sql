@@ -1,0 +1,1 @@
+ALTER TABLE public.daft_quote ADD COLUMN trend_until timestamptz;
