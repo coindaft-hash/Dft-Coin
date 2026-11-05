@@ -27,9 +27,21 @@ function Action({ icon: Icon, label, to, tone, onClick }: { icon: Icon; label: s
 export function TeamOverview({ rows }: { rows: TeamMember[] }) {
   const [selected, setSelected] = useState<number | null>(null);
   const selectedRows = rows.filter(row => row.team_level === selected);
-  const blocks = [{ level: 0, title: "My Team", subtitle: "All four levels" }, ...[1,2,3,4].map(level => ({ level, title: `Level ${String.fromCharCode(64 + level)} Data`, subtitle: level === 1 ? "Direct invitations" : `${level} steps from you` }))];
+  const blocks = [
+    { level: 0, title: "My Team", subtitle: "All four levels · 4-Tier Recharge Commission", rateBadge: null },
+    ...[1, 2, 3, 4].map(level => {
+      const rate = ["5%", "3%", "2%", "1%"][level - 1];
+      return {
+        level,
+        title: `Level ${String.fromCharCode(64 + level)} Data`,
+        subtitle: level === 1 ? `Direct invitations · ${rate} on recharge` : `${level} steps from you · ${rate} on recharge`,
+        rateBadge: `${rate} on Recharge`,
+      };
+    }),
+  ];
+
   return <>
-    {blocks.map(({ level, title, subtitle }) => {
+    {blocks.map(({ level, title, subtitle, rateBadge }) => {
       const members = level === 0 ? rows : rows.filter(row => row.team_level === level);
       const reward = members.reduce((sum, member) => sum + Number(member.reward), 0);
       const today = members.reduce((sum, member) => sum + Number(member.today_reward), 0);
@@ -37,15 +49,25 @@ export function TeamOverview({ rows }: { rows: TeamMember[] }) {
       return <section key={level} className="mt-6 border-t border-border pt-5" aria-label={title}>
         <div className="mb-3 flex items-center gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">{level ? <span className="text-lg font-semibold">{String.fromCharCode(64 + level)}</span> : <UsersThree weight="duotone" className="size-6" />}</span>
-          <div><h2 className="text-lg font-semibold">{title}</h2><p className="text-xs text-muted-foreground">{subtitle}</p></div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold">{title}</h2>
+              {rateBadge && (
+                <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+                  {rateBadge}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">{subtitle}</p>
+          </div>
         </div>
         <div className="grid grid-cols-4 divide-x divide-border border-y border-border">
-          <Metric label="Team Reward" value={money(reward)} highlight />
+          <Metric label="Commission" value={money(reward)} highlight />
           <Metric label="Funded Members" value={String(members.filter(row => row.funded).length)} />
           <Metric label="Total Members" value={String(members.length)} />
-          <Metric label="Today's Reward" value={money(today)} highlight />
+          <Metric label="Today's Comm." value={money(today)} highlight />
         </div>
-        <div className="my-3 flex items-center justify-between gap-2 text-xs"><span className="text-muted-foreground">Credited team deposits</span><span className="font-semibold tabular-nums">{money(effective)}</span></div>
+        <div className="my-3 flex items-center justify-between gap-2 text-xs"><span className="text-muted-foreground">Total team recharge volume</span><span className="font-semibold tabular-nums">{money(effective)}</span></div>
         <div className="grid grid-cols-3 gap-2">
           <Action icon={level === 0 ? Coins : UserList} label={level === 0 ? "Invite Rewards" : "Member List"} tone={level === 0 ? "reward" : "community"} {...(level === 0 ? { to: "/referral" as const } : { onClick: () => setSelected(level) })} />
           <Action icon={Trophy} label="Reward History" tone="reward" to="/records" />

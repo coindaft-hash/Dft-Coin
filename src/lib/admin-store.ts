@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { getUserInviteCode } from "@/lib/referral-team";
+import { getUserInviteCode, creditRechargeCommission } from "@/lib/referral-team";
 
 export interface AdminUser {
   id: string;
@@ -857,6 +857,14 @@ export function approveDeposit(depositId: string): AdminDeposit[] {
     } catch {}
 
     adjustUserBalance(target.user_id, target.amount, `Recharge Approved · #${depositId.slice(-6)}`);
+
+    // Credit tiered referral commissions on recharge: Level 1=5%, Level 2=3%, Level 3=2%, Level 4=1%
+    try {
+      creditRechargeCommission(
+        { id: target.user_id, email: target.user_email, name: target.user_name },
+        target.amount
+      );
+    } catch {}
   }
 
   // Update in vx-deposit-records

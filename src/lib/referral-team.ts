@@ -260,9 +260,16 @@ export async function syncUserToSupabase(user: {
   } catch {}
 }
 
+export const RECHARGE_COMMISSION_RATES: Record<number, { percent: number; label: string; rate: number }> = {
+  1: { percent: 5, label: "Level A (Direct)", rate: 0.05 },
+  2: { percent: 3, label: "Level B (2nd Tier)", rate: 0.03 },
+  3: { percent: 2, label: "Level C (3rd Tier)", rate: 0.02 },
+  4: { percent: 1, label: "Level D (4th Tier)", rate: 0.01 },
+};
+
 /**
  * Records a new member joining under a referrer's invite code.
- * Credits $5.00 referral reward to the referrer and builds the team tree.
+ * Initializes the member in the team tree (commission is earned when member recharges).
  */
 export function recordReferralSignup(newUser: {
   id: string;
@@ -278,11 +285,11 @@ export function recordReferralSignup(newUser: {
       member: maskEmail(newUser.email),
       joined_at: new Date().toISOString(),
       code: newUser.myInviteCode,
-      team_level: 1, // Direct invite
+      team_level: 1, // Direct invite (Level A)
       funded: false,
       effective_amount: 0,
-      reward: 5.0,
-      today_reward: 5.0,
+      reward: 0, // Commission awarded upon recharge (5%)
+      today_reward: 0,
     };
 
     // 1. Store under referrer code
@@ -308,18 +315,104 @@ export function recordReferralSignup(newUser: {
       });
       localStorage.setItem(allKey, JSON.stringify(allList));
     }
+  } catch {}
+}
 
-    // 3. Credit $5 to referrer's bonus ledger
-    const bonusKey = `vx_referral_rewards_${trimmedCode}`;
-    const rawBonus = localStorage.getItem(bonusKey);
-    const bonuses = rawBonus ? JSON.parse(rawBonus) : [];
-    bonuses.unshift({
-      id: "ref_" + Date.now(),
-      amount: 5.0,
-      note: `Referral reward · ${maskEmail(newUser.email)} joined Vertex`,
-      created_at: new Date().toISOString(),
-    });
-    localStorage.setItem(bonusKey, JSON.stringify(bonuses));
+/**
+ * Distributes multi-tier referral commissions whenever a team member recharges:
+ * Level 1 (Level A): 5%
+ * Level 2 (Level B): 3%
+ * Level 3 (Level C): 2%
+ * Level 4 (Level D): 1%
+ */
+export function creditRechargeCommission(
+  depositor: { id?: string; email?: string; name?: string },
+  rechargeAmount: number
+) {
+  if (typeof window === "undefined" || !rechargeAmount || rechargeAmount <= 0) return;
+
+  try {
+    let allUsers: any[] = [];
+    const rawAdmin = localStorage.getItem("vx_admin_users");
+    if (rawAdmin) {
+      const parsed = JSON.parse(rawAdmin);
+      if (Array.isArray(parsed)) allUsers = parsed;
+    }
+    if (allUsers.length === 0) {
+      const rawAccounts = localStorage.getItem("vx-accounts");
+      if (rawAccounts) {
+        const parsed = JSON.parse(rawAccounts);
+        if (Array.isArray(parsed)) allUsers = parsed;
+      }
+    }
+
+    const depositorEmail = depositor.email?.toLowerCase();
+    const member = allUsers.find(
+      u => (depositor.id && u.id === depositor.id) || (depositorEmail && u.email?.toLowerCase() === depositorEmail)
+    );
+
+    if (!member) return;
+
+    let parentRef = (member.referred_by || member.user_metadata?.referred_by || "").trim();
+    let currentLevel = 1;
+
+    while (parentRef && currentLevel <= 4) {
+      const refUpper = parentRef.toUpperCase();
+      const parentUser = allUsers.find(
+        u =>
+          (u.invite_code && u.invite_code.toUpperCase() === refUpper) ||
+          (u.my_invite_code && u.my_invite_code.toUpperCase() === refUpper) ||
+          (u.user_metadata?.my_invite_code && u.user_metadata.my_invite_code.toUpperCase() === refUpper) ||
+          u.id === parentRef ||
+          (u.email && u.email.toLowerCase() === parentRef.toLowerCase())
+      );
+
+      if (!parentUser) break;
+
+      const tier = RECHARGE_COMMISSION_RATES[currentLevel];
+      const commission = Number((rechargeAmount * tier.rate).toFixed(2));
+      const parentCode = (parentUser.invite_code || parentUser.my_invite_code || getUserInviteCode(parentUser)).toUpperCase();
+      const levelLetter = String.fromCharCode(64 + currentLevel);
+
+      if (commission > 0 && parentCode) {
+        // 1. Record in referral rewards ledger
+        const bonusKey = `vx_referral_rewards_${parentCode}`;
+        const rawBonus = localStorage.getItem(bonusKey);
+        const bonuses = rawBonus ? JSON.parse(rawBonus) : [];
+        bonuses.unshift({
+          id: `rew_dep_${Date.now()}_L${currentLevel}`,
+          amount: commission,
+          level: currentLevel,
+          rate: tier.percent,
+          note: `Level ${levelLetter} (${tier.percent}%) Recharge Commission · Member recharged $${rechargeAmount.toFixed(2)}`,
+          created_at: new Date().toISOString(),
+        });
+        localStorage.setItem(bonusKey, JSON.stringify(bonuses));
+
+        // 2. Credit to parent's balance
+        parentUser.balance = Number((Number(parentUser.balance || 0) + commission).toFixed(2));
+        localStorage.setItem("vx_admin_users", JSON.stringify(allUsers));
+
+        // If parent user is the active user, update active balance
+        const mockRaw = localStorage.getItem("vx-mock-user");
+        if (mockRaw) {
+          const mock = JSON.parse(mockRaw);
+          if (mock.id === parentUser.id || (mock.email && mock.email.toLowerCase() === parentUser.email?.toLowerCase())) {
+            mock.balance = parentUser.balance;
+            localStorage.setItem("vx-mock-user", JSON.stringify(mock));
+            const actRaw = localStorage.getItem("vertex-test-account-v2");
+            if (actRaw) {
+              const act = JSON.parse(actRaw);
+              act.balance = Number((Number(act.balance || 0) + commission).toFixed(2));
+              localStorage.setItem("vertex-test-account-v2", JSON.stringify(act));
+            }
+          }
+        }
+      }
+
+      parentRef = (parentUser.referred_by || parentUser.user_metadata?.referred_by || "").trim();
+      currentLevel++;
+    }
   } catch {}
 }
 
@@ -477,6 +570,33 @@ export async function fetchTeamMembersAsync(user?: { id?: string; email?: string
     }
   } catch {}
 
+  // 5. Aggregate live deposits from Supabase so member total_deposit and recharge rewards are 100% accurate
+  try {
+    const { data: dbDeposits } = await supabase.from("deposits").select("*");
+    if (Array.isArray(dbDeposits)) {
+      dbDeposits.forEach((d: any) => {
+        if (d && (d.status === "approved" || d.status === "completed" || d.status === "confirming")) {
+          const amt = Number(d.amount || 0);
+          if (amt > 0) {
+            const emailKey = d.user_email ? String(d.user_email).toLowerCase() : null;
+            const idKey = d.user_id ? String(d.user_id) : null;
+            if (emailKey && allUsersMap.has(emailKey)) {
+              const u = allUsersMap.get(emailKey);
+              u.total_deposit = (Number(u.total_deposit) || 0) + amt;
+            } else if (idKey) {
+              for (const u of allUsersMap.values()) {
+                if (u.id === idKey) {
+                  u.total_deposit = (Number(u.total_deposit) || 0) + amt;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+  } catch {}
+
   const allUsersList = Array.from(allUsersMap.values()).filter(
     u => u.email?.toLowerCase() !== myEmail && u.id !== myId
   );
@@ -531,7 +651,10 @@ export async function fetchTeamMembersAsync(user?: { id?: string; email?: string
   const toRow = (u: any, level: number): TeamMemberRow => {
     const joinedAt = u.created_at || new Date().toISOString();
     const isToday = joinedAt.slice(0, 10) === todayStr;
-    const funded = (Number(u.total_deposit) || 0) > 0 || (Number(u.balance) || 0) > 0;
+    const effectiveRecharge = Number(u.total_deposit || 0);
+    const tier = RECHARGE_COMMISSION_RATES[level] ?? { rate: 0.01, percent: 1 };
+    const reward = Number((effectiveRecharge * tier.rate).toFixed(2));
+    const funded = effectiveRecharge > 0;
     return {
       user_id: u.id || `usr_${u.email}`,
       member: maskEmail(u.email),
@@ -539,9 +662,9 @@ export async function fetchTeamMembersAsync(user?: { id?: string; email?: string
       code: u.invite_code || "—",
       team_level: level,
       funded,
-      effective_amount: Number(u.total_deposit || 0),
-      reward: 5.0, // $5 referral bonus
-      today_reward: isToday ? 5.0 : 0,
+      effective_amount: effectiveRecharge,
+      reward,
+      today_reward: isToday ? reward : 0,
     };
   };
 
@@ -595,17 +718,21 @@ export function getTeamMembersForUser(user?: { id?: string; email?: string } | n
             a.user_metadata?.referred_by?.toUpperCase() === userCode
         );
         if (matching.length > 0) {
-          const rows: TeamMemberRow[] = matching.map((a: any) => ({
-            user_id: a.id || "usr_" + Math.random().toString(36).slice(2, 7),
-            member: maskEmail(a.email || "member@vertex.market"),
-            joined_at: a.created_at || new Date().toISOString(),
-            code: a.my_invite_code || a.invite_code || getUserInviteCode(a),
-            team_level: 1,
-            funded: false,
-            effective_amount: 0,
-            reward: 5.0,
-            today_reward: 5.0,
-          }));
+          const rows: TeamMemberRow[] = matching.map((a: any) => {
+            const dep = Number(a.total_deposit || 0);
+            const rew = Number((dep * 0.05).toFixed(2));
+            return {
+              user_id: a.id || "usr_" + Math.random().toString(36).slice(2, 7),
+              member: maskEmail(a.email || "member@vertex.market"),
+              joined_at: a.created_at || new Date().toISOString(),
+              code: a.my_invite_code || a.invite_code || getUserInviteCode(a),
+              team_level: 1,
+              funded: dep > 0,
+              effective_amount: dep,
+              reward: rew,
+              today_reward: rew,
+            };
+          });
           return rows;
         }
       }
@@ -677,7 +804,7 @@ export async function fetchTeamWithdrawalsAsync(user?: { id?: string; email?: st
 }
 
 /**
- * Returns total referral bonus earnings for a user
+ * Returns total referral recharge commissions for a user
  */
 export function getReferralRewardsForUser(user?: { id?: string; email?: string } | null): {
   total: number;
@@ -693,20 +820,26 @@ export function getReferralRewardsForUser(user?: { id?: string; email?: string }
       const history = JSON.parse(raw);
       if (Array.isArray(history) && history.length > 0) {
         const total = history.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-        return { total, history };
+        return { total: Number(total.toFixed(2)), history };
       }
     }
 
     const team = getTeamMembersForUser(user);
     if (team.length > 0) {
-      const total = team.reduce((sum, item) => sum + (Number(item.reward) || 5.0), 0);
-      const history = team.map((m, idx) => ({
-        id: `rew_${idx}_${m.user_id}`,
-        amount: m.reward || 5.0,
-        note: `Referral reward · ${m.member} joined Vertex`,
-        created_at: m.joined_at,
-      }));
-      return { total, history };
+      const total = team.reduce((sum, item) => sum + (Number(item.reward) || 0), 0);
+      const history = team
+        .filter(m => (m.reward || 0) > 0)
+        .map((m, idx) => {
+          const tier = RECHARGE_COMMISSION_RATES[m.team_level] ?? { percent: 5, rate: 0.05 };
+          const levelLetter = String.fromCharCode(64 + m.team_level);
+          return {
+            id: `rew_${idx}_${m.user_id}`,
+            amount: m.reward,
+            note: `Level ${levelLetter} (${tier.percent}%) Recharge Commission · ${m.member} deposit of $${m.effective_amount.toFixed(2)}`,
+            created_at: m.joined_at,
+          };
+        });
+      return { total: Number(total.toFixed(2)), history };
     }
   } catch {}
 
@@ -721,13 +854,13 @@ export function getProfileSummaryForUser(user?: { id?: string; email?: string } 
   const frozen = getFrozenBalance();
   const total = getTotalBalance();
   const team = getTeamMembersForUser(user);
-  const earnings = team.length * 5.0;
+  const earnings = team.reduce((sum, m) => sum + (Number(m.reward) || 0), 0);
 
   return {
     balance: available,
     frozen_balance: frozen,
     total_balance: total,
-    earnings,
+    earnings: Number(earnings.toFixed(2)),
     deposited: 0,
     withdrawn: 0,
     team_count: team.length,

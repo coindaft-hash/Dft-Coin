@@ -156,7 +156,7 @@ export function ProfilePage() {
       const asyncTeam = await fetchTeamMembersAsync(account);
       if (asyncTeam.length > 0 || teamCount === 0) {
         teamCount = asyncTeam.length;
-        teamEarnings = asyncTeam.length * 5.0;
+        teamEarnings = asyncTeam.reduce((sum, m) => sum + (Number(m.reward) || 0), 0);
       }
     } catch {}
 

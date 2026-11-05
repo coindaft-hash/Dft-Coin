@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Check, Copy, Gift, HandCoins, Share2, Users } from "lucide-react";
+import { Check, Copy, Gift, HandCoins, Share2, Users, Percent, Zap, Sparkles, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorNote, LoadingRows, ProfileShell, SignInSection, dayTime, money } from "@/components/profile-shell";
@@ -97,8 +97,146 @@ function CodeCard({ code, saved, onSave }: { code: string; saved: boolean; onSav
       </div>
 
       <p className="text-[11px] leading-5 text-muted-foreground">
-        Anyone who registers with your link or code is automatically added to your Level A team, and $5 is credited to your balance when their account opens.
+        Anyone who registers with your link or code is automatically added to your Level A team. When they recharge their account, you instantly receive a 5% commission credited directly to your balance.
       </p>
+    </section>
+  );
+}
+
+export function RechargeCommissionCard() {
+  const tiers = [
+    {
+      level: "A",
+      title: "Level 1 (Direct)",
+      bengali: "১ম লেভেল",
+      rate: "5%",
+      desc: "Direct invitations",
+      example: "$100 = +$5.00",
+      borderTone: "border-emerald-500/40 bg-gradient-to-b from-emerald-500/15 via-emerald-500/5 to-transparent",
+      badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+      accentDot: "bg-emerald-400 shadow-[0_0_8px_#34d399]",
+    },
+    {
+      level: "B",
+      title: "Level 2 (Tier 2)",
+      bengali: "২য় লেভেল",
+      rate: "3%",
+      desc: "2nd step downline",
+      example: "$100 = +$3.00",
+      borderTone: "border-cyan-500/40 bg-gradient-to-b from-cyan-500/15 via-cyan-500/5 to-transparent",
+      badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
+      accentDot: "bg-cyan-400 shadow-[0_0_8px_#22d3ee]",
+    },
+    {
+      level: "C",
+      title: "Level 3 (Tier 3)",
+      bengali: "৩য় লেভেল",
+      rate: "2%",
+      desc: "3rd step downline",
+      example: "$100 = +$2.00",
+      borderTone: "border-amber-500/40 bg-gradient-to-b from-amber-500/15 via-amber-500/5 to-transparent",
+      badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+      accentDot: "bg-amber-400 shadow-[0_0_8px_#fbbf24]",
+    },
+    {
+      level: "D",
+      title: "Level 4 (Tier 4)",
+      bengali: "৪র্থ লেভেল",
+      rate: "1%",
+      desc: "4th step downline",
+      example: "$100 = +$1.00",
+      borderTone: "border-purple-500/40 bg-gradient-to-b from-purple-500/15 via-purple-500/5 to-transparent",
+      badgeColor: "bg-purple-500/20 text-purple-300 border-purple-500/40",
+      accentDot: "bg-purple-400 shadow-[0_0_8px_#c084fc]",
+    },
+  ];
+
+  return (
+    <section className="mt-5 overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-[#0b1623] via-[#08101a] to-[#040810] p-4 shadow-xl shadow-primary/5 space-y-3.5">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-border/60">
+        <div className="flex items-center gap-2.5">
+          <div className="relative grid size-10 place-items-center rounded-xl bg-gradient-to-tr from-primary to-emerald-500 text-primary-foreground shadow-lg shadow-primary/25">
+            <Percent className="size-5 font-black" />
+            <span className="absolute -top-1 -right-1 flex size-2.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
+            </span>
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-sm font-extrabold tracking-tight text-white">Recharge Commission</h2>
+              <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+                4 Tiers
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Commissions are earned when team members recharge
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 4 Cards Grid */}
+      <div className="grid grid-cols-2 gap-2.5">
+        {tiers.map(t => (
+          <div
+            key={t.level}
+            className={`group relative overflow-hidden rounded-xl border ${t.borderTone} p-3 flex flex-col justify-between transition-all duration-200 hover:border-opacity-80`}
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className={`size-1.5 rounded-full ${t.accentDot}`} />
+                  <span className="text-xs font-bold text-white tracking-wide">
+                    Level {t.level}
+                  </span>
+                </div>
+                <span className={`rounded-md border px-1.5 py-0.5 font-mono text-xs font-black ${t.badgeColor}`}>
+                  {t.rate}
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] text-muted-foreground">{t.bengali} · {t.desc}</p>
+            </div>
+
+            <div className="mt-3 pt-2 border-t border-border/40 flex items-center justify-between text-[10px]">
+              <span className="text-muted-foreground">Per $100</span>
+              <span className="font-mono font-bold text-white">
+                {t.example.split("= ")[1]}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Explanatory Policy Box */}
+      <div className="rounded-xl bg-black/40 border border-border/60 p-3 space-y-1.5 text-[11px]">
+        <div className="flex items-center gap-1.5 text-primary font-semibold text-xs">
+          <Zap className="size-3.5 text-primary" />
+          <span>কমিশন পাওয়ার নিয়ম (Commission Rule)</span>
+        </div>
+        <p className="text-muted-foreground leading-relaxed">
+          • আপনার টিমের কোনো মেম্বার যখনই একাউন্টে ফান্ড রিচার্জ বা ডিপোজিট করবে, আপনি সাথে সাথে তার রিচার্জের উপর কমিশন পাবেন:
+        </p>
+        <div className="grid grid-cols-2 gap-1.5 pt-1 font-mono text-[11px]">
+          <div className="flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
+            <span>১ম লেভেল:</span> <strong className="font-bold">৫%</strong>
+          </div>
+          <div className="flex items-center gap-1.5 text-cyan-400 bg-cyan-500/10 px-2 py-1 rounded border border-cyan-500/20">
+            <span>২য় লেভেল:</span> <strong className="font-bold">৩%</strong>
+          </div>
+          <div className="flex items-center gap-1.5 text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
+            <span>৩য় লেভেল:</span> <strong className="font-bold">২%</strong>
+          </div>
+          <div className="flex items-center gap-1.5 text-purple-400 bg-purple-500/10 px-2 py-1 rounded border border-purple-500/20">
+            <span>৪র্থ লেভেল:</span> <strong className="font-bold">১%</strong>
+          </div>
+        </div>
+        <p className="text-[10px] text-muted-foreground pt-1 flex items-center gap-1 text-emerald-400">
+          <Sparkles className="size-3 shrink-0" />
+          <span>ডিপোজিট অ্যাপ্রুভ হওয়ার সাথে সাথে ব্যালেন্সে কমিশন স্বয়ংক্রিয়ভাবে যোগ হবে।</span>
+        </p>
+      </div>
     </section>
   );
 }
@@ -245,25 +383,33 @@ export function ReferralPage() {
     try {
       const teamMembers = await fetchTeamMembersAsync(account);
       const localRewards = getReferralRewardsForUser(account);
-      const totalEarned = Math.max(localRewards.total, teamMembers.length * 5.0);
-      setEarned(totalEarned);
+      const teamEarnings = teamMembers.reduce((sum, m) => sum + (Number(m.reward) || 0), 0);
+      const totalEarned = Math.max(localRewards.total, teamEarnings);
+      setEarned(Number(totalEarned.toFixed(2)));
       setMembers(teamMembers.length);
 
       let rewardList = localRewards.history;
-      if (rewardList.length === 0 && teamMembers.length > 0) {
-        rewardList = teamMembers.map((m, idx) => ({
-          id: `rew_${idx}_${m.user_id}`,
-          amount: m.reward || 5.0,
-          note: `Referral reward · ${m.member} joined Vertex`,
-          created_at: m.joined_at,
-        }));
+      if (rewardList.length === 0 && teamMembers.some(m => (m.reward || 0) > 0)) {
+        rewardList = teamMembers
+          .filter(m => (m.reward || 0) > 0)
+          .map((m, idx) => {
+            const levelLetter = String.fromCharCode(64 + m.team_level);
+            const rate = m.team_level === 1 ? "5%" : m.team_level === 2 ? "3%" : m.team_level === 3 ? "2%" : "1%";
+            return {
+              id: `rew_${idx}_${m.user_id}`,
+              amount: m.reward,
+              note: `Level ${levelLetter} (${rate}) Recharge Commission · ${m.member} deposit of $${m.effective_amount.toFixed(2)}`,
+              created_at: m.joined_at,
+            };
+          });
       }
       setRewards(rewardList);
       setState("ready");
     } catch {
       const localRewards = getReferralRewardsForUser(account);
       const localTeam = getTeamMembersForUser(account);
-      setEarned(localRewards.total);
+      const teamEarnings = localTeam.reduce((sum, m) => sum + (Number(m.reward) || 0), 0);
+      setEarned(Math.max(localRewards.total, teamEarnings));
       setMembers(localTeam.length);
       setRewards(localRewards.history);
       setState("ready");
@@ -277,7 +423,7 @@ export function ReferralPage() {
   async function share() {
     if (!code) return;
     const link = getReferralLink(code);
-    const message = `Join me on Vertex! Use my invitation code ${code} to claim a $20 Welcome Trial Fund: ${link}`;
+    const message = `Join me on Vertex! Use my invitation code ${code} to get started: ${link}`;
     const nav = navigator as Navigator & { share?: (data: { title: string; text: string; url: string }) => Promise<void> };
     if (nav.share) {
       try {
@@ -319,10 +465,13 @@ export function ReferralPage() {
         <>
           {code && <CodeCard code={code} saved={saved} onSave={() => void copy()} />}
 
+          {/* Fresh 4-Level Recharge Commission Card */}
+          <RechargeCommissionCard />
+
           <section className="mt-4 grid grid-cols-2 gap-2">
             <div className="min-w-0 rounded-xl border border-border bg-card p-3">
               <HandCoins className="size-4 text-primary" />
-              <p className="mt-1.5 text-[10px] text-muted-foreground">Rewards earned</p>
+              <p className="mt-1.5 text-[10px] text-muted-foreground">Recharge Commissions</p>
               <p className="truncate text-lg font-bold tabular-nums">{earned === null ? "—" : money(earned)}</p>
             </div>
             <div className="min-w-0 rounded-xl border border-border bg-card p-3">
@@ -346,7 +495,7 @@ export function ReferralPage() {
           </div>
 
           <section className="mt-6">
-            <h2 className="mb-3 text-sm font-semibold">Reward history</h2>
+            <h2 className="mb-3 text-sm font-semibold">Commission History</h2>
             {state === "loading" ? (
               <LoadingRows rows={2} label="Loading rewards" />
             ) : state === "error" ? (
@@ -354,8 +503,8 @@ export function ReferralPage() {
             ) : rewards.length === 0 ? (
               <EmptyState
                 icon={Gift}
-                title="No rewards yet"
-                note="$5 is credited to your balance each time an invited member opens an account."
+                title="No recharge commissions yet"
+                note="You earn commissions when invited members recharge (Level 1: 5%, Level 2: 3%, Level 3: 2%, Level 4: 1%)."
               />
             ) : (
               <ul className="space-y-2">
