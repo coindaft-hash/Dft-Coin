@@ -106,7 +106,7 @@ function CodeCard({ code, saved, onSave }: { code: string; saved: boolean; onSav
 export function RechargeCommissionCard() {
   return (
     <section
-      className="mt-5 relative w-full overflow-hidden text-white font-['Hind_Siliguri','Inter',sans-serif]"
+      className="mt-5 relative w-full overflow-hidden text-white font-['Inter',system-ui,sans-serif]"
       style={{
         borderRadius: "28px",
         padding: "24px 20px 22px",
@@ -160,7 +160,7 @@ export function RechargeCommissionCard() {
             REFERRAL <span style={{ color: "#19e68c" }}>COMMISSION</span>
           </h2>
           <p className="mt-1 text-xs sm:text-sm font-medium text-[#dbe6f2] max-w-md mx-auto leading-snug">
-            টিমের প্রতিটি রিচার্জের উপর ৪ স্তরের আকর্ষণীয় কমিশন পান
+            Earn 4-tier recharge commissions on every team deposit
           </p>
         </div>
 
@@ -203,8 +203,8 @@ export function RechargeCommissionCard() {
           }}
         >
           <div>
-            <span className="inline-block rounded-full bg-[#19e68c]/20 border border-[#19e68c]/40 px-2 py-0.5 text-[10px] font-bold text-[#19e68c] uppercase tracking-wider">
-              Level 1 · ১ম লেভেল
+            <span className="inline-block rounded-full bg-[#19e68c]/20 border border-[#19e68c]/40 px-2.5 py-0.5 text-[10px] font-bold text-[#19e68c] uppercase tracking-wider">
+              Level 1 · Direct
             </span>
             <div
               className="mt-2 text-3xl sm:text-4xl font-black font-mono tracking-tight"
@@ -229,8 +229,8 @@ export function RechargeCommissionCard() {
           }}
         >
           <div>
-            <span className="inline-block rounded-full bg-[#ffe600]/20 border border-[#ffe600]/40 px-2 py-0.5 text-[10px] font-bold text-[#ffe600] uppercase tracking-wider">
-              Level 2 · ২য় লেভেল
+            <span className="inline-block rounded-full bg-[#ffe600]/20 border border-[#ffe600]/40 px-2.5 py-0.5 text-[10px] font-bold text-[#ffe600] uppercase tracking-wider">
+              Level 2 · Tier 2
             </span>
             <div
               className="mt-2 text-3xl sm:text-4xl font-black font-mono tracking-tight"
@@ -255,8 +255,8 @@ export function RechargeCommissionCard() {
           }}
         >
           <div>
-            <span className="inline-block rounded-full bg-[#00d4ff]/20 border border-[#00d4ff]/40 px-2 py-0.5 text-[10px] font-bold text-[#00d4ff] uppercase tracking-wider">
-              Level 3 · ৩য় লেভেল
+            <span className="inline-block rounded-full bg-[#00d4ff]/20 border border-[#00d4ff]/40 px-2.5 py-0.5 text-[10px] font-bold text-[#00d4ff] uppercase tracking-wider">
+              Level 3 · Tier 3
             </span>
             <div
               className="mt-2 text-3xl sm:text-4xl font-black font-mono tracking-tight"
@@ -281,8 +281,8 @@ export function RechargeCommissionCard() {
           }}
         >
           <div>
-            <span className="inline-block rounded-full bg-[#c084fc]/20 border border-[#c084fc]/40 px-2 py-0.5 text-[10px] font-bold text-[#c084fc] uppercase tracking-wider">
-              Level 4 · ৪র্থ লেভেল
+            <span className="inline-block rounded-full bg-[#c084fc]/20 border border-[#c084fc]/40 px-2.5 py-0.5 text-[10px] font-bold text-[#c084fc] uppercase tracking-wider">
+              Level 4 · Tier 4
             </span>
             <div
               className="mt-2 text-3xl sm:text-4xl font-black font-mono tracking-tight"
@@ -310,7 +310,7 @@ export function RechargeCommissionCard() {
           ✓
         </div>
         <div>
-          <strong className="text-[#19e68c]">কমিশন পাওয়ার নিয়ম:</strong> টিমের মেম্বাররা একাউন্টে ফান্ড রিচার্জ বা ডিপোজিট করলে সাথে সাথে তার উপর ৫%, ৩%, ২%, ১% কমিশন স্বয়ংক্রিয়ভাবে আপনার একাউন্ট ব্যালেন্সে যুক্ত হবে।
+          <strong className="text-[#19e68c]">Commission Rules:</strong> Tiered commissions of 5%, 3%, 2%, and 1% are automatically credited to your balance immediately upon downline deposit approval.
         </div>
       </div>
     </section>

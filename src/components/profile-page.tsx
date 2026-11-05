@@ -85,7 +85,7 @@ const implementsTools: (
   { name: "FAQ", icon: Question, to: "/faq", tone: "community" },
   { name: "Settings", icon: GearSix, to: "/settings", tone: "account" },
   { name: "Support", icon: Headset, to: "/support", tone: "support" },
-  { name: "Admin Panel (এডমিন)", icon: ShieldCheckIcon, to: "/admin", tone: "reward" },
+  { name: "Admin Panel", icon: ShieldCheckIcon, to: "/admin", tone: "reward" },
 ];
 
 function SectionTitle({ children }: { children: string }) {
